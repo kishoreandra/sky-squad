@@ -11,3 +11,6 @@ An Android / iOS game inspired by Mini Militia, from the Sky Squad team at Arc L
 - `.github/workflows/ios.yml` – builds the iPhone app on GitHub's free Mac (Actions tab > iPhone build > Run workflow)
 
 Never commit the Android signing key (`keys/`).
+
+## Licence
+All rights reserved. You may look at the code, but not copy or reuse it. See `LICENSE`.
