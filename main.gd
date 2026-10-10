@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.2
+# Sky Squad - Arc Light Studio. Playtest build 1.3
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.2"
+const VERSION := "1.3"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -659,6 +659,8 @@ func _ready() -> void:
 					dport = int(a2.substr(7))
 				if a2.begins_with("--room="):
 					droom = a2.substr(7)
+				if a2 == "--stay":
+					stay_open = true
 				if a2.begins_with("--matchsecs="):
 					lantest_time = float(a2.substr(12))
 			dedicated_start(dport, droom)
@@ -5481,6 +5483,8 @@ func draw_lobby() -> void:
 	var y := r.position.y
 	var host := net_role == "host"
 	if online:
+		if str(lobby_info.get("room", "")) != "":
+			room_code = str(lobby_info.room)
 		txh("ROOM  " + room_code, Vector2(x, y + 42 * u), 26 * u, C_ARC, 0, 4 * u)
 		var tw2 := font_h.get_string_size("ROOM  " + room_code, HORIZONTAL_ALIGNMENT_LEFT, -1, int(26 * u)).x
 		var shr := flat_btn(Rect2(x + tw2 + 16 * u, y + 18 * u, 96 * u, 32 * u), "o_share")
@@ -6341,7 +6345,7 @@ func name_key(k: String, raw := false) -> void:
 		return
 	if key_target == "server":
 		k = k.to_lower()
-		if name_entry.length() < 40 and "abcdefghijklmnopqrstuvwxyz0123456789.-".contains(k):
+		if name_entry.length() < 48 and "abcdefghijklmnopqrstuvwxyz0123456789.-:".contains(k):
 			name_entry += k
 		return
 	if not raw:
@@ -6359,7 +6363,7 @@ func draw_namekey() -> void:
 	var iw := w - 44 * u
 	var titles := {"name": ["YOUR NAME", "Up to 12 letters. Everyone sees it over your head."],
 		"room": ["ROOM CODE", "Type the code your friend got, like TIGER42."],
-		"server": ["SERVER ADDRESS", "Ask the group admin. Example: 140.238.1.2"]}
+		"server": ["SERVER ADDRESS", "Ask the admin. Like 140.238.1.2 or name.ply.gg:12345"]}
 	var tt: Array = titles.get(key_target, titles.name)
 	txh(tt[0], Vector2(x, y + 38 * u), 24 * u, C_ARC, 0, 4 * u)
 	txt(tt[1], Vector2(r.end.x - 22 * u, y + 34 * u), 10 * u, C_MUTED, 2)
@@ -6381,7 +6385,7 @@ func draw_namekey() -> void:
 	for ri in KB_ROWS.size():
 		var row: String = KB_ROWS[ri]
 		if ri == 3 and key_target == "server":
-			row = "ZXCVBNM.-"
+			row = "ZXCVBNM.-:"
 		var x0 := x + (iw - (row.length() * kw + (row.length() - 1) * gap)) / 2.0
 		for ci in row.length():
 			var kr := flat_btn(Rect2(x0 + ci * (kw + gap), ky + ri * (kh + gap), kw, kh), "nk:" + row[ci])
@@ -6448,6 +6452,10 @@ func predicting() -> bool:
 # ask the room finder on the server which port the room lives on
 func mm_query(mode: String, code: String) -> void:
 	var host := str(cfg.server).strip_edges()
+	var direct_port := 0
+	if host.contains(":"):
+		direct_port = int(host.get_slice(":", 1))
+		host = host.get_slice(":", 0)
 	var ip := host if host.is_valid_ip_address() else IP.resolve_hostname(host, IP.TYPE_IPV4)
 	if ip == "":
 		toast("Can't find the server. Check the address.")
@@ -6467,6 +6475,11 @@ func mm_query(mode: String, code: String) -> void:
 	if recon_left <= 0:
 		conn_label = ("Opening room " if mode == "new" else "Joining room ") + mm_code
 	state = "connecting"
+	if direct_port > 0:
+		mm_mode = ""
+		if recon_left <= 0:
+			conn_label = "Joining the home server"
+		join_game(ip, direct_port)
 
 func mm_poll(dt: float) -> void:
 	if mm == null or mm_mode == "":
@@ -6640,7 +6653,13 @@ func dedicated_tick(delta: float, dt: float) -> void:
 	time_s += delta
 	if state == "play":
 		update_game(dt)
-	if lan_players.is_empty():
+	if lan_players.is_empty() and stay_open:
+		if state != "lobby":
+			print("SERVER everyone left, back to waiting")
+			state = "lobby"
+			players.clear()
+		idle_t = 0.0
+	elif lan_players.is_empty():
 		idle_t += delta
 		if idle_t > 90.0:
 			print("SERVER room %s empty, closing" % room_code)
@@ -6739,3 +6758,5 @@ var dbg_sizes: Array = []
 func s_feed(f) -> void:
 	if net_role == "client" and typeof(f) == TYPE_ARRAY:
 		feed = f
+
+var stay_open := false
