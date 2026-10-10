@@ -7,12 +7,18 @@ on:
   push:
     tags: ["v*"]            # or push a tag like v1.2
 
+permissions:
+  contents: write           # lets the build post the .ipa as a Release
+
 jobs:
   ios:
     runs-on: macos-14
     timeout-minutes: 40
     env:
       GODOT_VER: "4.3-stable"
+    defaults:
+      run:
+        shell: bash --noprofile --norc -eo pipefail {0}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +51,31 @@ jobs:
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qry SkySquad-iPhone.ipa Payload
           ls -la SkySquad-iPhone.ipa
+
+      - name: Check the app is complete
+        run: |
+          A=Payload/SkySquad.app
+          test -f "$A/SkySquad" || { echo "missing the game program"; exit 1; }
+          test -f "$A/SkySquad.pck" || { echo "missing the game data (pck)"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$A/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$A/Info.plist"
+          lipo -info "$A/SkySquad"
+          {
+            echo "## iPhone app built"
+            echo "- App: $(du -sh $A | cut -f1), ipa: $(du -h SkySquad-iPhone.ipa | cut -f1)"
+            echo "- Bundle: $(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' $A/Info.plist), version $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $A/Info.plist)"
+            echo "- $(lipo -info $A/SkySquad)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post it as a Release (easy download link for friends)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Payload/SkySquad.app/Info.plist)
+          TAG="iphone-v$VER"
+          gh release delete "$TAG" -y --cleanup-tag || true
+          gh release create "$TAG" SkySquad-iPhone.ipa --title "Sky Squad $VER for iPhone" \
+            --notes "Install with Sideloadly using your Apple ID. Refresh every 7 days." --target "$GITHUB_SHA"
 
       - uses: actions/upload-artifact@v4
         with:
