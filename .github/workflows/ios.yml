@@ -1,0 +1,53 @@
+# Builds an unsigned iPhone app (.ipa) on GitHub's free Mac.
+# Friends install it with Sideloadly using their own free Apple ID (it lasts 7 days, then refresh).
+name: iPhone build
+
+on:
+  workflow_dispatch:        # "Run workflow" button on the Actions tab
+  push:
+    tags: ["v*"]            # or push a tag like v1.2
+
+jobs:
+  ios:
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      GODOT_VER: "4.3-stable"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Godot and the iPhone export template
+        run: |
+          curl -sL -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VER}/Godot_v${GODOT_VER}_macos.universal.zip"
+          unzip -q godot.zip
+          curl -sL -o templates.tpz "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VER}/Godot_v${GODOT_VER}_export_templates.tpz"
+          T="$HOME/Library/Application Support/Godot/export_templates/4.3.stable"
+          mkdir -p "$T"
+          unzip -q -j templates.tpz "templates/ios.zip" "templates/version.txt" -d "$T"
+          rm templates.tpz
+
+      - name: Make the Xcode project
+        run: |
+          G="./Godot.app/Contents/MacOS/Godot"
+          "$G" --headless --import || true
+          mkdir -p build/ios
+          "$G" --headless --export-release "iOS" build/ios/SkySquad.ipa
+          ls build/ios
+
+      - name: Build the app (no signing; Sideloadly signs it on your PC)
+        run: |
+          xcodebuild -project build/ios/SkySquad.xcodeproj -scheme SkySquad -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            build | tail -20
+          APP=$(find build/dd/Build/Products -name "SkySquad.app" -maxdepth 3 | head -1)
+          echo "app: $APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry SkySquad-iPhone.ipa Payload
+          ls -la SkySquad-iPhone.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SkySquad-iPhone
+          path: SkySquad-iPhone.ipa
+          retention-days: 30

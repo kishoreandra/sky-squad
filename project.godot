@@ -1,0 +1,45 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Sky Squad"
+config/description="Arc Light Studio - jetpack shooter with breaking maps and changing gravity"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.png"
+boot_splash/bg_color=Color(0.0392, 0.047, 0.133, 1)
+boot_splash/show_image=false
+config/quit_on_go_back=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/handheld/orientation=4
+window/stretch/mode="disabled"
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=false
+pointing/emulate_touch_from_mouse=false
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.0392, 0.047, 0.133, 1)
+textures/vram_compression/import_etc2_astc=true
+textures/canvas_textures/default_texture_filter=3
+anti_aliasing/quality/msaa_2d=1
+
+[importer_defaults]
+
+texture={
+"mipmaps/generate": true
+}
+
+[audio]
+
+driver/output_latency=15
+driver/output_latency.web=30

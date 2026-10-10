@@ -1,0 +1,8 @@
+# never upload these
+keys/
+*.keystore
+build/
+shots/
+.godot/
+*.apk
+*.ipa
