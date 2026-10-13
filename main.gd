@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.4
+# Sky Squad - Arc Light Studio. Playtest build 1.5
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.4"
+const VERSION := "1.5"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -125,6 +125,7 @@ class Player:
 	var actor := false
 	var look := {}
 	var spawn_set := false
+	var fire_lock := false
 	var spawn_pt := Vector2.ZERO
 	var last_spawn := Vector2.ZERO
 	var born_t := -9.0
@@ -376,11 +377,12 @@ var cfg := {
 	"ev_water": true, "ev_roof": true, "ev_brk": true, "ev_flip": false, "zones": false, "map": "sky",
 	"fire_mode": "auto", "sticks": "floating", "stick_size": 1.0, "btn_size": 1.0, "opacity": 0.7,
 	"left_handed": false, "aim_sens": "medium", "vibration": true, "sound": true,
-	"name": "", "lan_bots": 2, "look": "", "server": "", "uid": "",
+	"name": "", "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
 }
 const MATCH_ROWS := [
 	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
 	["mode", "Game mode", ["ffa", "team"], ["Free for all", "Teams"]],
+	["my_side", "Your team (Teams)", [0, 1], ["Blue", "Red"]],
 	["bots", "Bots", [1, 2, 3, 4, 5], ["1", "2", "3", "4", "5"]],
 	["skill", "Bot skill", ["easy", "normal", "hard"], ["Easy", "Normal", "Hard"]],
 	["minutes", "Match length", [3, 5, 10], ["3 min", "5 min", "10 min"]],
@@ -642,6 +644,7 @@ func _ready() -> void:
 			lantest_time = 45.0
 			Engine.max_fps = 60
 			cfg.name = "Host"
+			cfg.uid = "test-host"
 			cfg.lan_bots = 2
 			if args.has("--team"):
 				cfg.mode = "team"
@@ -651,6 +654,7 @@ func _ready() -> void:
 			lantest_time = 45.0
 			Engine.max_fps = 60
 			cfg.name = "Tester"
+			cfg.uid = "test-tester"
 			if lantest_join == "auto":
 				state = "lan_join"
 			else:
@@ -693,6 +697,10 @@ func _ready() -> void:
 			mm_query("join", a.substr(14))
 		if a == "--drop-test":
 			drop_test = true
+		if a.begins_with("--hold="):
+			lt_hold = float(a.substr(7))
+		if a.begins_with("--pick="):
+			test_pick = int(a.substr(7))
 		if a.begins_with("--state="):
 			state = a.substr(8)
 		if a.begins_with("--look="):
@@ -1269,6 +1277,7 @@ func old_spawn_unused(p: Player) -> void:
 
 func spawn_at(p: Player, best: Vector2) -> void:
 	p.spawn_set = false
+	p.fire_lock = true
 	p.born_t = time_s
 	p.protect_t = S.protect
 	if t > 0.5:
@@ -1345,7 +1354,7 @@ func reset_match() -> void:
 	clouds.clear()
 	feed.clear()
 	players.clear()
-	var humans: Array = [{"peer": 1, "name": my_name(), "look": look_str(my_look())}]
+	var humans: Array = [{"peer": 1, "name": my_name(), "look": look_str(my_look()), "side": int(cfg.my_side)}]
 	var nbots := int(cfg.bots)
 	if net_role == "host":
 		humans = lan_players
@@ -1372,13 +1381,18 @@ func reset_match() -> void:
 		p.style = BOT_STYLE[i]
 		p.st = make_style(p.style)
 		p.side = i
-		if cfg.mode == "team":
-			p.side = i % 2
-			if i > 0 or net_role == "host":
-				p.team = "blue" if p.side == 0 else "red"
-				p.color = TEAM_COL[1] if p.side == 0 else TEAM_COL[2]
 		p.prev = p.inp.duplicate()
 		players.append(p)
+	if cfg.mode == "team":
+		var sides := []
+		for hm in humans:
+			sides.append(int(hm.get("side", -1)))
+		var plan := team_plan(sides, nbots)
+		for i in players.size():
+			var tp: Player = players[i]
+			tp.side = plan[i]
+			tp.team = "blue" if tp.side == 0 else "red"
+			tp.color = TEAM_COL[1] if tp.side == 0 else TEAM_COL[2]
 	my_idx = 99 if dedicated else 0
 	for i in players.size():
 		if i < humans.size():
@@ -1662,7 +1676,8 @@ func hitscan(p: Player, from: Vector2, a: float, dmg: float, chip: float) -> voi
 				break
 		if victim != null:
 			var head: bool = pos.distance_to(head_pos(victim)) < 9.5
-			victim.vx += dir.x * 90
+			if victim.protect_t <= 0:
+				victim.vx += dir.x * 90
 			blood(pos.x, pos.y, 8)
 			play("hit", pos, -6.0)
 			hurt(victim, dmg * (S.headshot if head else 1.0), p, "shot", "sniper", head)
@@ -1718,7 +1733,8 @@ func shock_arc(p: Player, from: Vector2, a: float, dmg: float) -> void:
 	var end := from + Vector2(cos(a), sin(a)) * 200.0
 	if best != null:
 		end = center(best)
-		best.stun_t = 0.9
+		if best.protect_t <= 0:
+			best.stun_t = 0.9
 		hurt(best, dmg, p, "shock", "shock")
 		sparks(end.x, end.y, Color("#9ff6ff"), 10)
 	else:
@@ -1772,8 +1788,9 @@ func explode_hits(x: float, y: float, r: float, dmg: float, owner, gun: String) 
 		var big := r * 1.4
 		if d < big:
 			var f := 1.0 - d / big
-			p.vx += dv.x / d * 560 * f
-			p.vy += dv.y / d * 560 * f
+			if p.protect_t <= 0:
+				p.vx += dv.x / d * 560 * f
+				p.vy += dv.y / d * 560 * f
 			hurt(p, dmg * f, owner, "blast", gun)
 	for k in pickups:
 		if Vector2(k.x - x, k.y - y).length() < r:
@@ -2063,7 +2080,9 @@ func update_player(p: Player, dt: float) -> void:
 		p.spin = minf(1.0, p.spin + dt / 0.45)
 	else:
 		p.spin = maxf(0.0, p.spin - dt / 0.6)
-	if inp.shoot and w != null and p.reload_t <= 0 and p.fire_cd <= 0 and p.stun_t <= 0 and (not mini or p.spin >= 1.0 or w.mag == 0):
+	if not inp.shoot:
+		p.fire_lock = false
+	if inp.shoot and not p.fire_lock and w != null and p.reload_t <= 0 and p.fire_cd <= 0 and p.stun_t <= 0 and (not mini or p.spin >= 1.0 or w.mag == 0):
 		if w.mag > 0:
 			fire(p, w)
 			w.mag -= 1
@@ -2164,8 +2183,9 @@ func update_player(p: Player, dt: float) -> void:
 				continue
 			var oc := center(o)
 			if absf(oc.y - c.y) < 40 and (oc.x - c.x) * dir > -6 and (oc.x - c.x) * dir < 54:
-				o.vx += dir * 360
-				o.vy -= gsign() * 140
+				if o.protect_t <= 0:
+					o.vx += dir * 360
+					o.vy -= gsign() * 140
 				hurt(o, 35, p, "melee", "melee")
 				blood(oc.x, oc.y, 6)
 				play("hit", oc, -4.0)
@@ -2537,7 +2557,7 @@ func bot_think(b: Player, dt: float) -> void:
 			reach = 220.0
 		elif w != null and w.type == "net":
 			reach = 520.0
-		if visible and b.see_t > st.react and on_target and d < reach:
+		if visible and b.see_t > st.react and on_target and d < reach and (tg == null or tg.protect_t <= 0.2):
 			if b.pause_t <= 0:
 				inp.shoot = true
 				if b.burst_t <= -0.5:
@@ -2768,16 +2788,20 @@ func update_bullets(dt: float) -> void:
 					elif b.rocket:
 						explode(b.x, b.y, S.rocket_radius, S.rocket_dmg, b.owner, "rpg")
 					elif b.net:
-						p.net_t = 3.5
-						p.vx *= 0.3
-						p.vy *= 0.3
+						if p.protect_t <= 0:
+							p.net_t = 3.5
+							p.vx *= 0.3
+							p.vy *= 0.3
 						play("net", Vector2(b.x, b.y), -4.0)
 						hurt(p, b.dmg, b.owner, "shot", "net")
 					else:
 						var head: bool = Vector2(b.x, b.y).distance_to(head_pos(p)) < 9.5
 						var dmg: float = b.dmg * (S.headshot if head else 1.0)
-						p.vx += signf(b.vx) * 25
-						blood(b.x, b.y, 4)
+						if p.protect_t <= 0:
+							p.vx += signf(b.vx) * 25
+							blood(b.x, b.y, 4)
+						else:
+							sparks(b.x, b.y, Color("#9ff6ff"), 3)
 						play("hit", Vector2(b.x, b.y), -10.0)
 						hurt(p, dmg, b.owner, "shot", b.gun, head)
 					break
@@ -3110,7 +3134,7 @@ func menu_tap(pos: Vector2) -> void:
 			pressed_at = time_s
 			play_l("ui_ok" if BIG_ACTIONS.has(b.a) else "ui_click", null, -6.0 if BIG_ACTIONS.has(b.a) else -8.0, 0.0)
 			var a: String = b.a
-			if a.begins_with("row:") or a.begins_with("key:") or a.begins_with("lk_") or a.begins_with("nk:"):
+			if a.begins_with("row:") or a.begins_with("key:") or a.begins_with("lk_") or a.begins_with("nk:") or a.begins_with("team"):
 				do_action(a)
 				return
 			pending_action = a
@@ -3260,6 +3284,10 @@ func do_action(a: String) -> void:
 		_:
 			if a.begins_with("conn:"):
 				join_game(a.substr(5))
+			elif a.begins_with("team:"):
+				pick_team(int(a.substr(5)))
+			elif a == "team_shuffle":
+				pick_team(-2)
 			elif a.begins_with("lk_tab:"):
 				lk_tab = a.substr(7)
 				lk_page = 0
@@ -4875,7 +4903,7 @@ func s_reject(msg) -> void:
 func send_lobby(go := false) -> void:
 	if net_role != "host":
 		return
-	var info := {"room": room_code, "owner": str(lan_players[0].get("uid", "")) if (dedicated and not lan_players.is_empty()) else "", "pl": lobby_names(), "lk": lobby_looks(), "mode": cfg.mode, "map": cfg.map, "bots": clampi(int(cfg.lan_bots), 0, 6 - lan_players.size()), "skill": cfg.skill, "min": cfg.minutes, "go": go}
+	var info := {"room": room_code, "owner": str(lan_players[0].get("uid", "")) if (dedicated and not lan_players.is_empty()) else "", "pl": lobby_names(), "lk": lobby_looks(), "sd": lobby_sides(), "ud": lobby_uids(), "mode": cfg.mode, "map": cfg.map, "bots": clampi(int(cfg.lan_bots), 0, 6 - lan_players.size()), "skill": cfg.skill, "min": cfg.minutes, "go": go}
 	rpc("s_lobby", info)
 
 @rpc("authority", "call_remote", "reliable")
@@ -4900,7 +4928,7 @@ func start_lan_match() -> void:
 		players[0].bot = true
 		var lks := []
 		for p in players:
-			lks.append(p.pname + "=" + look_str(p.look))
+			lks.append(p.pname + "=" + look_str(p.look) + " side=" + str(p.side))
 		print("LOOKS ", lks)
 	state = "play"
 	snap_t = 0.0
@@ -5608,15 +5636,19 @@ func draw_lobby() -> void:
 		txh("LOBBY", Vector2(x, y + 42 * u), 26 * u, C_ARC, 0, 4 * u)
 		txt("You are hosting" if host else "Joined " + join_ip, Vector2(x + 110 * u, y + 40 * u), 12 * u, C_CYAN)
 	var names := lobby_names()
-	txt("PLAYERS", Vector2(x, y + 74 * u), 10 * u, C_CYAN)
-	for i in names.size():
+	var lmode: String = cfg.mode if host else str(lobby_info.get("mode", "ffa"))
+	if lmode == "team":
+		draw_team_columns(x, y, names, host)
+	else:
+		txt("PLAYERS", Vector2(x, y + 74 * u), 10 * u, C_CYAN)
+	for i in (names.size() if lmode != "team" else 0):
 		var yy := y + 96 * u + i * 22 * u
 		var lks := lobby_looks()
 		head_icon(parse_look(lks[i]) if i < lks.size() else default_look, Vector2(x + 6 * u, yy - 5 * u), 0.62 * u, TEAM_COL[i % TEAM_COL.size()])
 		var tag := ("  (leader)" if online else "  (host)") if i == 0 else ""
 		txt(str(names[i]) + tag, Vector2(x + 20 * u, yy), 15 * u, C_ARC if (host and i == 0) else C_INK)
 	var nb: int = clampi(int(cfg.lan_bots), 0, 6 - names.size()) if host else int(lobby_info.get("bots", 0))
-	if nb > 0:
+	if nb > 0 and lmode != "team":
 		txt("+ %d bot%s" % [nb, "s" if nb > 1 else ""], Vector2(x + 20 * u, y + 96 * u + names.size() * 22 * u), 13 * u, C_MUTED)
 	var rx := x + 250 * u
 	var mode: String = cfg.mode if host else str(lobby_info.get("mode", "ffa"))
@@ -5626,20 +5658,18 @@ func draw_lobby() -> void:
 	txt(mp + "  /  " + ("Teams" if mode == "team" else "Free for all") + "  /  %d min" % mins, Vector2(rx, y + 96 * u), 13 * u, C_INK)
 	if host:
 		var ips := lan_ips()
-		txt("Friends: join the hotspot, tap JOIN A GAME.", Vector2(rx, y + 124 * u), 11 * u, C_MUTED)
+		txt("Friends: join the hotspot, tap JOIN (HOTSPOT).", Vector2(rx, y + 124 * u), 11 * u, C_MUTED)
 		txt("Or type this address:", Vector2(rx, y + 142 * u), 11 * u, C_MUTED)
 		txt(", ".join(PackedStringArray(ips.slice(0, 2))) if not ips.is_empty() else "(turn on hotspot or Wi-Fi)", Vector2(rx, y + 166 * u), 18 * u, C_ARC, 0, 3 * u)
 		var bw := (r.end.x - 26 * u - rx - 10 * u) / 2.0
 		ui_button("START", Rect2(rx, y + 190 * u, bw * 2 + 10 * u, 48 * u), "start", true)
-		ui_button("SETTINGS", Rect2(rx, y + 246 * u, bw, 42 * u), "lan_cfg")
-		ui_button("LEAVE", Rect2(rx + bw + 10 * u, y + 246 * u, bw, 42 * u), "leave")
+		lobby_row(rx, y + 246 * u, bw * 2 + 10 * u, lmode == "team")
 	elif online and is_owner():
 		txt("You are the room leader.", Vector2(rx, y + 124 * u), 11 * u, C_MUTED)
 		txt("Start when everyone is in. Bots fill empty places.", Vector2(rx, y + 142 * u), 11 * u, C_MUTED)
 		var bw2 := (r.end.x - 26 * u - rx - 10 * u) / 2.0
 		ui_button("START", Rect2(rx, y + 190 * u, bw2 * 2 + 10 * u, 48 * u), "o_start", true)
-		ui_button("SETTINGS", Rect2(rx, y + 246 * u, bw2, 42 * u), "lan_cfg")
-		ui_button("LEAVE", Rect2(rx + bw2 + 10 * u, y + 246 * u, bw2, 42 * u), "leave")
+		lobby_row(rx, y + 246 * u, bw2 * 2 + 10 * u, lmode == "team")
 	else:
 		var dots := ".".repeat(int(time_s * 2.0) % 4)
 		var lead: String = str(names[0]) if (online and not names.is_empty()) else "the host"
@@ -5673,7 +5703,7 @@ func lantest_tick(dt: float) -> void:
 		if state == "lobby":
 			if lan_players.size() >= 2 or time_s > 40.0:
 				lt_wait += dt
-				if lt_wait > 3.0:
+				if lt_wait > 3.0 + lt_hold:
 					start_lan_match()
 		elif state == "over" and lt_done == 0.0:
 			lt_done = time_s
@@ -5682,6 +5712,10 @@ func lantest_tick(dt: float) -> void:
 				print("  %s bot=%s remote=%s kills=%d deaths=%d" % [p.pname, p.bot, p.remote, p.kills, p.deaths])
 		if lt_done > 0 and time_s - lt_done > 4.0:
 			get_tree().quit()
+	if test_pick >= 0 and net_role == "client" and state == "lobby" and not lobby_info.is_empty():
+		print("CLIENT picks team ", test_pick)
+		pick_team(test_pick)
+		test_pick = -1
 	if lantest_join == "auto" and state == "lan_join":
 		var fl := found_list()
 		if not fl.is_empty():
@@ -6935,3 +6969,129 @@ func draw_landing_marker() -> void:
 	draw_arc(foot, 8.0, 0, TAU, 20, Color(1, 1, 1, 0.7 * k), 2.0, true)
 	var ay := c.y - (46.0 + 6.0 * pulse) * gsign()
 	draw_colored_polygon(PackedVector2Array([Vector2(c.x - 9, ay), Vector2(c.x + 9, ay), Vector2(c.x, ay + 12 * gsign())]), Color(C_ARC, k))
+
+# ================= TEAM PICKING (v1.5) =================
+# sides people picked (-1 = no pick yet) -> final side for every human, then for every bot.
+# Players without a pick and the bots go to the smaller team.
+func team_plan(sides: Array, nbots: int) -> Array:
+	var out := []
+	var cnt := [0, 0]
+	for sd in sides:
+		var v := int(sd)
+		if v == 0 or v == 1:
+			cnt[v] += 1
+	for sd in sides:
+		var v := int(sd)
+		if v != 0 and v != 1:
+			v = 0 if cnt[0] <= cnt[1] else 1
+			cnt[v] += 1
+		out.append(v)
+	for i in nbots:
+		var v := 0 if cnt[0] <= cnt[1] else 1
+		cnt[v] += 1
+		out.append(v)
+	return out
+
+func lobby_sides() -> Array:
+	if net_role == "host":
+		var out := []
+		for lp in lan_players:
+			out.append(int(lp.get("side", -1)))
+		return out
+	return lobby_info.get("sd", [])
+
+func lobby_uids() -> Array:
+	if net_role == "host":
+		var out := []
+		for lp in lan_players:
+			out.append(str(lp.get("uid", "")))
+		return out
+	return lobby_info.get("ud", [])
+
+func my_lobby_index() -> int:
+	return lobby_uids().find(str(cfg.uid))
+
+func shuffle_teams() -> void:
+	var idx := range(lan_players.size())
+	idx.shuffle()
+	for k in idx.size():
+		lan_players[idx[k]].side = k % 2
+
+# tap JOIN BLUE / JOIN RED / SHUFFLE
+func pick_team(side: int) -> void:
+	if net_role == "host" and not dedicated:
+		if side == -2:
+			shuffle_teams()
+		elif not lan_players.is_empty():
+			lan_players[0].side = side
+		send_lobby()
+	elif net_role == "client":
+		rpc_id(1, "c_team", side)
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_team(side) -> void:
+	if net_role != "host" or not ["lobby", "lan_cfg", "over"].has(state):
+		return
+	var id := multiplayer.get_remote_sender_id()
+	var sd := int(side)
+	if sd == -2:
+		if sender_is_owner():
+			shuffle_teams()
+	elif sd == 0 or sd == 1:
+		for lp in lan_players:
+			if int(lp.peer) == id:
+				lp.side = sd
+	send_lobby()
+
+func draw_team_columns(x: float, y: float, names: Array, host: bool) -> void:
+	var sides := lobby_sides()
+	var lks := lobby_looks()
+	var picks := []
+	for i in names.size():
+		picks.append(int(sides[i]) if i < sides.size() else -1)
+	var nb: int = clampi(int(cfg.lan_bots), 0, 6 - names.size()) if host else int(lobby_info.get("bots", 0))
+	var plan := team_plan(picks, nb)
+	var mine := my_lobby_index()
+	var colw := 116 * u
+	var heads := [["BLUE", TEAM_COL[1]], ["RED", TEAM_COL[2]]]
+	for side in 2:
+		var cx := x + side * (colw + 8 * u)
+		fbox(Rect2(cx - 6 * u, y + 60 * u, colw, 172 * u), Color(heads[side][1], 0.1), 10 * u, Color(heads[side][1], 0.5), maxf(1.0, u))
+		txh(heads[side][0], Vector2(cx + 4 * u, y + 80 * u), 13 * u, heads[side][1])
+		var row := 0
+		for i in names.size():
+			if plan[i] != side:
+				continue
+			var yy := y + 104 * u + row * 21 * u
+			head_icon(parse_look(lks[i]) if i < lks.size() else default_look, Vector2(cx + 8 * u, yy - 5 * u), 0.55 * u, heads[side][1])
+			var nm := str(names[i])
+			if nm.length() > 10:
+				nm = nm.substr(0, 9) + "."
+			txt(nm + (" (you)" if i == mine else ""), Vector2(cx + 20 * u, yy), 12 * u, C_ARC if i == mine else (C_INK if picks[i] >= 0 else C_MUTED))
+			row += 1
+		var bots := 0
+		for j in range(names.size(), plan.size()):
+			if plan[j] == side:
+				bots += 1
+		if bots > 0:
+			txt("+ %d bot%s" % [bots, "s" if bots > 1 else ""], Vector2(cx + 20 * u, y + 104 * u + row * 21 * u), 11 * u, C_MUTED)
+		var my_side: int = plan[mine] if mine >= 0 and mine < plan.size() else -1
+		var br := flat_btn(Rect2(cx - 6 * u, y + 240 * u, colw, 40 * u), "team:%d" % side)
+		var on: bool = my_side == side and mine >= 0 and picks[mine] == side
+		fbox(br, heads[side][1] if on else Color(heads[side][1], 0.35), 10 * u, Color(1, 1, 1, 0.25 if on else 0.12), maxf(1.0, u))
+		txh(("YOUR TEAM" if on else "JOIN " + heads[side][0]), br.get_center() + Vector2(0, 5 * u), 12 * u, Color.WHITE, 1)
+
+# SETTINGS / (SHUFFLE) / LEAVE under the START button
+func lobby_row(rx: float, ry: float, wtot: float, teams: bool) -> void:
+	if teams:
+		var bw := (wtot - 16 * u) / 3.0
+		ui_button("SETTINGS", Rect2(rx, ry, bw, 42 * u), "lan_cfg")
+		ui_button("SHUFFLE", Rect2(rx + bw + 8 * u, ry, bw, 42 * u), "team_shuffle")
+		ui_button("LEAVE", Rect2(rx + 2 * (bw + 8 * u), ry, bw, 42 * u), "leave")
+	else:
+		var bw2 := (wtot - 10 * u) / 2.0
+		ui_button("SETTINGS", Rect2(rx, ry, bw2, 42 * u), "lan_cfg")
+		ui_button("LEAVE", Rect2(rx + bw2 + 10 * u, ry, bw2, 42 * u), "leave")
+
+var test_pick := -1
+var lt_hold := 0.0
