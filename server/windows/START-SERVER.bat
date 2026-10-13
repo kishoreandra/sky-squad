@@ -1,5 +1,5 @@
 @echo off
-title Sky Squad home server (v1.3)
+title Sky Squad home server (v1.4)
 cd /d "%~dp0"
 if not exist "Godot_v4.3-stable_win64_console.exe" (
   echo First start: downloading the game engine, about 60 MB. Please wait...
@@ -11,7 +11,7 @@ if not exist "Godot_v4.3-stable_win64_console.exe" (
   )
 )
 echo ==================================================
-echo   Sky Squad home server is running (version 1.3)
+echo   Sky Squad home server is running (version 1.4)
 echo   Keep this window open while friends play.
 echo   Close this window to stop the server.
 echo ==================================================
