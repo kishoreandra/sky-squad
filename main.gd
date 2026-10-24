@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.5
+# Sky Squad - Arc Light Studio. Playtest build 1.6
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.5"
+const VERSION := "1.6"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -26,7 +26,7 @@ const KB_ROWS := ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
 
 # ===================== SETTINGS (tune here) =====================
 const S := {
-	"gravity": 850.0, "max_fall": 500.0, "move_speed": 105.0,
+	"gravity": 850.0, "max_fall": 500.0, "move_speed": 118.0,
 	"jump_speed": 240.0, "thrust": 1400.0, "max_rise": 240.0,
 	"fuel_max": 100.0, "fuel_drain": 14.0, "refill_ground": 18.0, "refill_air": 4.0,
 	"hp_max": 100.0, "regen_delay": 4.0, "regen_rate": 6.0, "respawn": 3.5,
@@ -34,7 +34,7 @@ const S := {
 	"water_dps": 6.0, "start_grenades": 3, "max_grenades": 3, "max_bombs": 3, "max_smokes": 3,
 	"grenade_fuse": 2.5, "grenade_radius": 80.0, "grenade_dmg": 80.0,
 	"rocket_radius": 72.0, "rocket_dmg": 70.0, "pickup_respawn": 15.0,
-	"aim_turn": 5.0, "mouse_turn": 10.0, "protect": 2.5, "view_h": 390.0, "headshot": 1.6, "crouch_speed": 0.45, "crawl_speed": 0.3,
+	"aim_turn": 18.0, "mouse_turn": 30.0, "protect": 2.5, "view_h": 390.0, "headshot": 1.6, "crouch_speed": 0.45, "crawl_speed": 0.3,
 	"gun_draw": 0.78,
 }
 const WD := {
@@ -125,6 +125,12 @@ class Player:
 	var actor := false
 	var look := {}
 	var spawn_set := false
+	var shoot_buf := 0.0
+	var jit_last := Vector2.ZERO
+	var jit_prev := Vector2.ZERO
+	var jit_ok := false
+	var press_hold := {}
+	var sbuf: Array = []
 	var fire_lock := false
 	var spawn_pt := Vector2.ZERO
 	var last_spawn := Vector2.ZERO
@@ -377,7 +383,7 @@ var cfg := {
 	"ev_water": true, "ev_roof": true, "ev_brk": true, "ev_flip": false, "zones": false, "map": "sky",
 	"fire_mode": "auto", "sticks": "floating", "stick_size": 1.0, "btn_size": 1.0, "opacity": 0.7,
 	"left_handed": false, "aim_sens": "medium", "vibration": true, "sound": true,
-	"name": "", "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
+	"name": "", "show_fps": false, "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
 }
 const MATCH_ROWS := [
 	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
@@ -416,6 +422,7 @@ const CONTROL_ROWS := [
 	["aim_sens", "Aim sensitivity", ["low", "medium", "high"], ["Low", "Medium", "High"]],
 	["vibration", "Vibration", [true, false], ["On", "Off"]],
 	["sound", "Sound", [true, false], ["On", "Off"]],
+	["show_fps", "Show FPS", [false, true], ["Off", "On"]],
 ]
 var ui_btns: Array = []
 var match_time := 300.0
@@ -582,6 +589,8 @@ func _ready() -> void:
 	font = ThemeDB.fallback_font
 	load_fonts()
 	DisplayServer.screen_set_keep_on(true)
+	if OS.has_feature("mobile"):
+		Engine.max_fps = 60
 	for n in ["dirt0", "dirt1", "dirt2", "grass", "rock", "wood", "crate", "crack1", "crack2", "bg_mountains", "bg_hills", "bg_near",
 			"sand0", "sand1", "sand2", "sandcap", "concrete", "bg_out_far", "bg_out_mid", "bg_out_near",
 			"cave0", "cave1", "cave2", "moss", "brick", "torch", "bg_cat_far", "bg_cat_mid",
@@ -791,6 +800,10 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--screen="):
 			state = a.substr(9)
+		if a == "--watch":
+			reset_match()
+			players[my_idx].bot = true
+			state = "play"
 		if a.begins_with("--shot="):
 			var bits: PackedStringArray = a.substr(7).split(":")
 			shot_at = float(bits[0])
@@ -1407,7 +1420,7 @@ func reset_match() -> void:
 
 # ---------------- particles ----------------
 func add_part(x: float, y: float, vx: float, vy: float, life: float, color: Color, size: float, g: float = 0.0, tx: String = "", size1: float = -1.0) -> Part:
-	if parts.size() > 650:
+	if parts.size() > 420:
 		parts.pop_front()
 	var q := Part.new()
 	q.x = x; q.y = y; q.vx = vx; q.vy = vy; q.life = life; q.max_life = life; q.color = color
@@ -1991,7 +2004,9 @@ func update_player(p: Player, dt: float) -> void:
 	if cw0 != null and cw0.type == "minigun":
 		post_mul *= 0.72
 	var target: float = inp.mx * S.move_speed * (0.55 if p.in_water else 1.0) * post_mul
-	var acc := 1100.0 if p.on_ground else 520.0
+	var acc := 2600.0 if p.on_ground else 1500.0
+	if target != 0.0 and signf(target) != signf(p.vx):
+		acc *= 1.5
 	if p.vx < target:
 		p.vx = minf(target, p.vx + acc * dt)
 	elif p.vx > target:
@@ -2082,9 +2097,14 @@ func update_player(p: Player, dt: float) -> void:
 		p.spin = maxf(0.0, p.spin - dt / 0.6)
 	if not inp.shoot:
 		p.fire_lock = false
-	if inp.shoot and not p.fire_lock and w != null and p.reload_t <= 0 and p.fire_cd <= 0 and p.stun_t <= 0 and (not mini or p.spin >= 1.0 or w.mag == 0):
+	if inp.shoot and not pv.get("shoot", false):
+		p.shoot_buf = 0.22
+	p.shoot_buf -= dt
+	var want_fire: bool = (inp.shoot or p.shoot_buf > 0.0) and not p.fire_lock
+	if want_fire and w != null and p.reload_t <= 0 and p.fire_cd <= 0 and p.stun_t <= 0 and (not mini or p.spin >= 1.0 or w.mag == 0):
 		if w.mag > 0:
 			fire(p, w)
+			p.shoot_buf = 0.0
 			w.mag -= 1
 			p.fire_cd = WD[w.type].rate * (0.55 if w.get("dual", false) else 1.0)
 			if w.mag == 0:
@@ -3342,7 +3362,7 @@ func human_input() -> void:
 	if stick_l != null:
 		var d: Vector2 = stick_l.pos - stick_l.o
 		var ax := absf(d.x)
-		mx = signf(d.x) * clampf((ax - 8 * u) / (rad * 0.75), 0, 1) if ax > 8 * u else 0.0
+		mx = signf(d.x) * clampf((ax - 5 * u) / (rad * 0.45), 0, 1) if ax > 5 * u else 0.0
 		if d.y < -rad * 0.42:
 			fly = true
 		if d.y > rad * 0.6 and absf(d.x) < rad * 0.5:
@@ -3353,7 +3373,10 @@ func human_input() -> void:
 		if d.length() > 10 * u:
 			last_touch_aim = atan2(d.y, d.x)
 		if d.length() > rad * 0.7 and cfg.fire_mode == "auto":
-			shoot = true
+			# wait until the gun has turned to where the stick points, so the shot goes where you meant
+			var cw = me.slots[me.cur]
+			var lag := absf(wrapf(last_touch_aim - me.aim, -PI, PI))
+			shoot = lag < (0.05 if cw != null and cw.type == "sniper" else 0.3)
 		inp.aim = last_touch_aim
 	elif mouse_aiming():
 		var wpos := cam + mouse_pos / zoom
@@ -3482,6 +3505,19 @@ func shot_pose() -> void:
 
 # ---------------- loop ----------------
 func _process(delta: float) -> void:
+	var _p0 := Time.get_ticks_usec()
+	_process_inner(delta)
+	if prof_on:
+		prof_proc.append(Time.get_ticks_usec() - _p0)
+		prof_frame.append(delta * 1e6)
+		if prof_proc.size() >= 300:
+			var a := prof_proc.duplicate(); a.sort()
+			var b := prof_draw.duplicate(); b.sort()
+			var f := prof_frame.duplicate(); f.sort()
+			print("PROF process med=%dus p99=%dus | draw med=%dus p99=%dus | frame med=%dus p99=%dus max=%dus | parts=%d bullets=%d" % [a[a.size()/2], a[int(a.size()*0.99)], b[b.size()/2] if b.size() > 0 else 0, b[int(b.size()*0.99)] if b.size() > 0 else 0, f[f.size()/2], f[int(f.size()*0.99)], f[-1], parts.size(), bullets.size()])
+			prof_proc.clear(); prof_draw.clear(); prof_frame.clear()
+
+func _process_inner(delta: float) -> void:
 	var dt: float = minf(delta, 0.033)
 	time_s += delta
 	var vs := get_viewport_rect().size
@@ -3591,6 +3627,11 @@ func update_game(dt: float) -> void:
 		if p.bot:
 			bot_think(p, dt)
 	for p in players:
+		if p.remote and not p.press_hold.is_empty():
+			for kk in p.press_hold.keys():
+				p.inp[kk] = true
+			p.press_hold.clear()
+	for p in players:
 		update_player(p, dt)
 	if net_role == "host":
 		for p in players:
@@ -3676,6 +3717,21 @@ func w2s(p: Vector2) -> Vector2:
 func _draw() -> void:
 	if dedicated:
 		return
+	var _d0 := Time.get_ticks_usec()
+	_pm_t = _d0
+	_draw_inner()
+	_pm("rest")
+	if prof_on:
+		prof_draw.append(Time.get_ticks_usec() - _d0)
+		prof_n += 1
+		if prof_n % 300 == 0:
+			var o := ""
+			for k in prof_sec.keys():
+				o += "%s=%dus " % [k, prof_sec[k] / 300]
+			print("PROFSEC ", o)
+			prof_sec.clear()
+
+func _draw_inner() -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	panel_xf = Transform2D.IDENTITY
 	ui_btns.clear()
@@ -3699,15 +3755,19 @@ func _draw() -> void:
 				cam += (want - cam) * ease_k(6.0, last_delta)
 		elif me.respawn_t < 0.9:
 			cam += (want - cam) * ease_k(5.0, last_delta)
+	_pm("pre")
 	draw_bg()
+	_pm("bg")
 	var shk := randf_range(-0.5, 0.5) * shake if shake > 0 else 0.0
 	var wt := Transform2D(0.0, Vector2(zoom, zoom), 0.0, Vector2(-cam.x * zoom + shk, -cam.y * zoom + shk))
 	draw_set_transform_matrix(wt)
 	draw_zones()
 	draw_tiles(vw, vh)
+	_pm("tiles")
 	if in_menu:
 		for ac in menu_actors:
 			draw_player(ac, wt)
+		view_r = Rect2(-100000, -100000, 200000, 200000)
 		draw_parts(wt)
 		draw_set_transform_matrix(Transform2D.IDENTITY)
 		vignette(Color(0.02, 0.03, 0.1, 0.45), 0.3)
@@ -3739,20 +3799,27 @@ func _draw() -> void:
 		draw_top_layers()
 		return
 	leader_now = current_leader()
+	view_r = (wt.affine_inverse() * Rect2(Vector2.ZERO, Vector2(sw, sh))).grow(90)
 	draw_event_world()
 	for k in pickups:
-		draw_pickup(k)
+		if view_r.has_point(Vector2(k.x, k.y)):
+			draw_pickup(k)
 	for b in blocks:
 		draw_texture_rect(tex.rock, Rect2(b.c * T, b.y, 2 * T, 2 * T), false)
 	for cp in corpses:
-		draw_corpse(cp, wt)
+		if view_r.has_point(Vector2(cp.x, cp.y)):
+			draw_corpse(cp, wt)
+	_pm("items")
 	draw_set_transform_matrix(wt)
 	for p in players:
 		draw_player(p, wt)
+	_pm("players")
 	draw_set_transform_matrix(wt)
 	draw_landing_marker()
 	draw_set_transform_matrix(wt)
 	for b in bullets:
+		if not view_r.has_point(Vector2(b.x, b.y)):
+			continue
 		if b.flame:
 			var fage := clampf(1.0 - b.life / maxf(0.05, b.max_life), 0.0, 1.0)
 			var fsz := 14.0 + fage * 38.0
@@ -4133,6 +4200,8 @@ func draw_corpse(cp: Corpse, wt: Transform2D) -> void:
 func draw_parts(wt: Transform2D) -> void:
 	draw_set_transform_matrix(wt)
 	for q in parts:
+		if not view_r.has_point(Vector2(q.x, q.y)):
+			continue
 		var k: float = clampf(q.life / q.max_life, 0, 1)
 		var col: Color = q.color
 		col.a *= k if q.tex != "" else minf(1.0, k * 2.0)
@@ -5055,9 +5124,9 @@ func build_snap() -> Dictionary:
 
 func net_host_tick(dt: float) -> void:
 	snap_t += dt
-	if snap_t < 0.05:
+	if snap_t < SNAP_DT:
 		return
-	snap_t = minf(snap_t - 0.05, 0.05)
+	snap_t = minf(snap_t - SNAP_DT, SNAP_DT)
 	if not tile_dirty.is_empty():
 		var idx := PackedInt32Array()
 		var vals := PackedByteArray()
@@ -5089,7 +5158,7 @@ func net_host_tick(dt: float) -> void:
 			if p.remote:
 				var sp = multiplayer.multiplayer_peer.get_peer(p.peer_id)
 				if sp != null:
-					p.lat = clampf(sp.get_statistic(3) / 2000.0 + 0.03, 0.0, 0.25)
+					p.lat = clampf(sp.get_statistic(3) / 2000.0 + INTERP + 0.02, 0.0, 0.35)
 
 @rpc("authority", "call_remote", "reliable")
 func s_tiles(idx, vals, hps) -> void:
@@ -5116,6 +5185,11 @@ func apply_snap(d) -> void:
 	if ps.size() != players.size() or pf.size() != ps.size() * PF_N:
 		return
 	snaps_got += 1
+	var st: float = d.t
+	if absf(st - snap_clock) > 0.3 or snaps_got == 1:
+		snap_clock = st
+	else:
+		snap_clock = lerpf(snap_clock, st, 0.1)
 	t = d.t
 	water_y = d.wy
 	g_dir = d.g
@@ -5182,6 +5256,12 @@ func apply_snap(d) -> void:
 		p.spin = pf[o + 29]
 		p.burn_t = pf[o + 30]
 		p.smokes = int(pf[o + 31])
+		if not mine:
+			if p.alive and not was_alive:
+				p.sbuf.clear()
+			p.sbuf.append([st, p.nx, p.ny, p.svx, p.svy, p.naim])
+			while p.sbuf.size() > 8:
+				p.sbuf.pop_front()
 		if mine and p.alive and was_alive and snaps_got > 1:
 			reconcile_me(p, int(pf[o + 32]), fl)
 		elif mine:
@@ -5329,6 +5409,7 @@ func s_end(info) -> void:
 		var me: Player = players[my_idx]
 		print("CLIENT snaps=%d tile_updates=%d players=%d me=%s idx=%d kills=%d deaths=%d moved=%d" % [snaps_got, tiles_got, players.size(), me.pname, my_idx, me.kills, me.deaths, int(lt_moved)])
 		print("CLIENT fx: ", fx_count)
+		print("CLIENT others jitter=%.2fpx per frame" % (jit_sum / maxf(1.0, jit_n)))
 		print("CLIENT prediction: avg_error=%.1fpx hard_corrections=%d rtt=%dms" % [pred_err / maxf(1.0, pred_n), pred_snaps, int(rtt_s * 1000)])
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -5352,6 +5433,9 @@ func c_input(a) -> void:
 			inp.zoom = bool(a[10])
 			inp.bomb = bool(a[11])
 			inp.smoke = a.size() > 12 and bool(a[12])
+			for kk in EDGE_KEYS:
+				if inp.get(kk, false):
+					p.press_hold[kk] = true
 			if a.size() > 13:
 				p.ack = maxi(p.ack, int(a[13]))
 			inputs_got += 1
@@ -5388,10 +5472,17 @@ func update_client(dt: float) -> void:
 		var diff := wrapf(me.inp.aim - me.aim, -PI, PI)
 		var stepmax: float = aim_rate(mouse_aiming()) * dt
 		me.aim = wrapf(me.aim + clampf(diff, -stepmax, stepmax), -PI, PI)
+	for kk in EDGE_KEYS:
+		if me.inp.get(kk, false):
+			in_latch[kk] = true
+	snap_clock += dt
 	in_t += dt
 	if in_t >= 1.0 / 30.0:
 		in_t = minf(in_t - 1.0 / 30.0, 0.03)
-		var i2: Dictionary = me.inp
+		var i2: Dictionary = me.inp.duplicate()
+		for kk in in_latch.keys():
+			i2[kk] = true
+		in_latch.clear()
 		in_seq += 1
 		var pkt := [i2.mx, i2.fly, i2.shoot, i2.swap, i2.grenade, i2.melee, i2.reload, me.aim, i2.down, i2.pick, i2.zoom, i2.bomb, i2.smoke, in_seq]
 		if lag_ms > 0:
@@ -5419,12 +5510,26 @@ func update_client(dt: float) -> void:
 			continue
 		if i == my_idx and predicting():
 			predict_me(p, dt)
+		elif not p.sbuf.is_empty() and not no_glide:
+			glide(p)
 		else:
 			var age := minf(p.snap_age, 0.12)
 			var k := ease_k(18.0, dt)
 			p.x += (p.nx + p.vx * age - p.x) * k
 			p.y += (p.ny + p.vy * age - p.y) * k
-		if i != my_idx:
+		if i != my_idx and p.alive and dt > 0:
+			var mv := (Vector2(p.x, p.y) - p.jit_last) / dt
+			if p.jit_ok and mv.length() < 1500.0 and dt < 0.05:
+				jit_sum += (mv - p.jit_prev).length() * dt
+				jit_n += 1
+			if glide_log and i == (my_idx + 1) % players.size():
+				print("GL %.4f %.4f %.1f %.1f %d %.4f %.1f" % [time_s, snap_clock, p.x, p.y, p.sbuf.size(), (float(p.sbuf[-1][0]) if not p.sbuf.is_empty() else 0.0), mv.length()])
+			p.jit_prev = mv
+			p.jit_ok = true
+			p.jit_last = Vector2(p.x, p.y)
+		elif i != my_idx:
+			p.jit_ok = false
+		if i != my_idx and (p.sbuf.is_empty() or no_glide):
 			p.aim = lerp_angle(p.aim, p.naim, ease_k(16.0, dt))
 		if p.on_ground:
 			p.walk += absf(p.vx) * dt * (0.05 if p.posture == "stand" else 0.09)
@@ -6015,6 +6120,9 @@ func update_actors(dt: float) -> void:
 			add_part(nz.x + randf_range(-3, 3), nz.y, randf_range(-20, 20) - spd * 0.3, randf_range(90, 160), 0.5, Color(0.85, 0.85, 0.88, 0.4), 6, -0.02, "smoke", 18)
 
 func draw_top_layers() -> void:
+	if cfg.show_fps:
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		txt("%d FPS" % Engine.get_frames_per_second(), Vector2(sw - 10 * u, sh - 8 * u), 11 * u, C_ARC, 2, 3 * u)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	ga = 1.0
 	draw_toast()
@@ -6730,7 +6838,9 @@ func predict_step(p: Player, mx: float, fly_in: bool, dt: float) -> void:
 	if cw0 != null and cw0.type == "minigun":
 		post_mul *= 0.72
 	var target: float = mx * S.move_speed * (0.55 if p.in_water else 1.0) * post_mul
-	var acc := 1100.0 if p.on_ground else 520.0
+	var acc := 2600.0 if p.on_ground else 1500.0
+	if target != 0.0 and signf(target) != signf(p.vx):
+		acc *= 1.5
 	if p.vx < target:
 		p.vx = minf(target, p.vx + acc * dt)
 	elif p.vx > target:
@@ -7095,3 +7205,61 @@ func lobby_row(rx: float, ry: float, wtot: float, teams: bool) -> void:
 
 var test_pick := -1
 var lt_hold := 0.0
+
+var prof_on := OS.get_cmdline_user_args().has("--profile")
+var prof_proc: Array = []
+var prof_draw: Array = []
+var prof_frame: Array = []
+
+var _pm_t := 0
+var prof_sec := {}
+var prof_n := 0
+func _pm(nm: String) -> void:
+	if not prof_on:
+		return
+	var n := Time.get_ticks_usec()
+	prof_sec[nm] = prof_sec.get(nm, 0) + (n - _pm_t)
+	_pm_t = n
+
+# ================= SMOOTH (v1.6) =================
+const SNAP_DT := 1.0 / 30.0
+const INTERP := 0.1
+const EDGE_KEYS := ["shoot", "swap", "grenade", "melee", "reload", "down", "bomb", "smoke", "zoom"]
+var in_latch := {}
+var snap_clock := 0.0
+var jit_sum := 0.0
+var jit_n := 0
+var glide_log := OS.get_cmdline_user_args().has("--glidelog")
+var no_glide := OS.get_cmdline_user_args().has("--noglide")
+var view_r := Rect2(-100000, -100000, 200000, 200000)
+
+# show another player a little in the past, gliding between the two updates around that moment
+func glide(p: Player) -> void:
+	var rt := snap_clock - INTERP
+	var buf := p.sbuf
+	var a: Array = buf[0]
+	if rt <= a[0]:
+		p.x = a[1]
+		p.y = a[2]
+		p.aim = a[5]
+		return
+	for j in range(buf.size() - 1):
+		var s0: Array = buf[j]
+		var s1: Array = buf[j + 1]
+		if rt >= s0[0] and rt <= s1[0]:
+			var k: float = (rt - float(s0[0])) / maxf(0.001, float(s1[0]) - float(s0[0]))
+			p.x = lerpf(s0[1], s1[1], k)
+			p.y = lerpf(s0[2], s1[2], k)
+			p.vx = lerpf(s0[3], s1[3], k)
+			p.vy = lerpf(s0[4], s1[4], k)
+			p.aim = lerp_angle(s0[5], s1[5], k)
+			return
+	# no newer update yet: carry on a little along the last known speed
+	var l: Array = buf[-1]
+	var ex: float = minf(rt - float(l[0]), 0.15)
+	p.x = l[1] + l[3] * ex
+	p.y = l[2] + l[4] * ex
+	p.vx = l[3]
+	p.vy = l[4]
+	p.aim = l[5]
+
