@@ -800,6 +800,11 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--screen="):
 			state = a.substr(9)
+		if a == "--zoomtest":
+			zoom_test = true
+			cfg.bots = 0
+			reset_match()
+			state = "play"
 		if a == "--watch":
 			reset_match()
 			players[my_idx].bot = true
@@ -3621,6 +3626,8 @@ func update_game(dt: float) -> void:
 			me0.inp.melee = true
 	if not dedicated:
 		human_input()
+		if zoom_test:
+			zoom_script(dt)
 	pick_request = ""
 	zoom_request = false
 	for p in players:
@@ -3744,15 +3751,36 @@ func _draw_inner() -> void:
 	elif not players.is_empty():
 		var me: Player = players[my_idx]
 		var pc := center(me)
-		var look := Vector2(cos(me.aim), sin(me.aim)) * (40.0 + (view_h / S.view_h - 1.0) * vw * 0.3)
+		# look a little ahead where you aim; the look-ahead glides on its own, slowly, so flicking
+		# the aim never throws the screen around, and you always stay well inside the screen
+		var reach: float = 40.0 + (view_h / S.view_h - 1.0) * vw * 0.16
+		var look_want := Vector2(cos(me.aim) * reach, sin(me.aim) * reach * 0.5)
+		look_want.x = clampf(look_want.x, -vw * 0.2, vw * 0.2)
+		look_want.y = clampf(look_want.y, -vh * 0.14, vh * 0.14)
+		var jumped: bool = cam_pc != Vector2.ZERO and pc.distance_to(cam_pc) > 300.0
+		cam_pc = pc
+		if jumped or not me.alive:
+			cam_look = look_want
+		else:
+			cam_look += (look_want - cam_look) * ease_k(2.5, last_delta)
+		var look := cam_look
 		var tx := (WW - vw) / 2.0 if vw >= WW else clampf(pc.x + look.x - vw / 2.0, 0, WW - vw)
-		var ty := (WH - vh) / 2.0 if vh >= WH else clampf(pc.y + look.y * 0.5 - vh / 2.0, 0, WH - vh)
+		var ty := (WH - vh) / 2.0 if vh >= WH else clampf(pc.y + look.y - vh / 2.0, 0, WH - vh)
 		var want := Vector2(tx, ty)
+		if zoom_test:
+			zoom_log(me, pc, vw, vh)
 		if me.alive:
-			if cam == Vector2.ZERO or cam.distance_to(want) > 500 or shot_at >= 0:
+			if cam == Vector2.ZERO or jumped or shot_at >= 0:
 				cam = want
 			else:
 				cam += (want - cam) * ease_k(6.0, last_delta)
+				# never let yourself slip near the edge of the screen
+				if vw < WW:
+					cam.x = clampf(cam.x, pc.x - vw * 0.82, pc.x - vw * 0.18)
+					cam.x = clampf(cam.x, 0, WW - vw)
+				if vh < WH:
+					cam.y = clampf(cam.y, pc.y - vh * 0.8, pc.y - vh * 0.2)
+					cam.y = clampf(cam.y, 0, WH - vh)
 		elif me.respawn_t < 0.9:
 			cam += (want - cam) * ease_k(5.0, last_delta)
 	_pm("pre")
@@ -7263,3 +7291,52 @@ func glide(p: Player) -> void:
 	p.vy = l[4]
 	p.aim = l[5]
 
+
+# ---- test: sniper zoomed, run left/right and flick aim, log the camera ----
+var zoom_test := false
+var cam_look := Vector2.ZERO
+var cam_pc := Vector2.ZERO
+var zt_last := Vector2.ZERO
+var zt_jumps := 0
+var zt_max := 0.0
+var zt_out := 0
+var zt_edge := 1.0
+var zt_n := 0
+func zoom_script(dt: float) -> void:
+	var me: Player = players[my_idx]
+	if not me.alive:
+		return
+	var w = me.slots[me.cur]
+	if w == null or w.type != "sniper":
+		me.slots[me.cur] = full_slot("sniper")
+		me.slots[me.cur].zi = 3 if not OS.get_cmdline_user_args().has("--z4") else 2
+	me.protect_t = 99.0
+	var ph := fmod(t, 3.2)
+	me.inp.mx = 1.0 if ph < 1.6 else -1.0
+	me.inp.fly = fmod(t, 2.0) < 0.5
+	# flick the aim stick: forward, back, up-ish, as a player looking around
+	var a: float = [0.0, PI, -0.6, PI + 0.5, 0.3][int(t / 0.7) % 5]
+	if me.inp.mx < 0:
+		a = PI - a
+	me.inp.aim = a
+	last_touch_aim = a
+
+func zoom_log(me: Player, pc: Vector2, vw: float, vh: float) -> void:
+	if t < 1.0:
+		zt_last = cam
+		return
+	var jump := cam.distance_to(zt_last) / maxf(0.001, last_delta) / vw
+	zt_last = cam
+	zt_n += 1
+	zt_max = maxf(zt_max, jump)
+	if jump > 1.5:
+		zt_jumps += 1
+	var sx := (pc.x - cam.x) / vw
+	var sy := (pc.y - cam.y) / vh
+	var edge := minf(minf(sx, 1.0 - sx), minf(sy, 1.0 - sy))
+	zt_edge = minf(zt_edge, edge)
+	if edge < 0.08:
+		zt_out += 1
+	if zt_n % 300 == 0:
+		print("ZOOMTEST zoom_level=%d view_h=%.0f gun=%s" % [zoom_level(me), view_h, str(me.slots[me.cur].type if me.slots[me.cur] != null else "none")])
+		print("ZOOMTEST frames=%d fast_camera_frames=%d (cam moving >1.5 screens/sec) max=%.1f screens/sec  near_edge_frames=%d closest_to_edge=%.2f" % [zt_n, zt_jumps, zt_max, zt_out, zt_edge])
