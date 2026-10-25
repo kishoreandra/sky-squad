@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.8
+# Sky Squad - Arc Light Studio. Playtest build 1.9
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.8"
+const VERSION := "1.9"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -41,7 +41,7 @@ const WD := {
 	"magnum":  {"name": "MAGNUM",  "dmg": 26.0, "rate": 0.40, "mag": 7,  "spare": 28,  "reload": 1.3, "spread": 0.02,  "speed": 1250.0, "pellets": 1, "life": 0.8,  "chip": 0.5,  "recoil": 4.0, "push": 0.0,   "snd": "magnum", "zooms": [1]},
 	"uzi":     {"name": "UZI",     "dmg": 8.0,  "rate": 0.075,"mag": 30, "spare": 120, "reload": 1.5, "spread": 0.13,  "speed": 1100.0, "pellets": 1, "life": 0.45, "chip": 0.25, "recoil": 2.0, "push": 0.0,   "snd": "uzi", "zooms": [1]},
 	"ak47":    {"name": "AK-47",   "dmg": 17.0, "rate": 0.11, "mag": 30, "spare": 90,  "reload": 1.9, "spread": 0.045, "speed": 1400.0, "pellets": 1, "life": 0.85, "chip": 0.45, "recoil": 5.0, "push": 0.0,   "snd": "ak47", "zooms": [1, 2]},
-	"shotgun": {"name": "SHOTGUN", "dmg": 14.0, "rate": 0.9,  "mag": 6,  "spare": 18,  "reload": 2.0, "spread": 0.24,  "speed": 1150.0, "pellets": 8, "life": 0.36, "chip": 0.4,  "recoil": 7.0, "push": 140.0, "snd": "shotgun", "zooms": [1]},
+	"shotgun": {"name": "SHOTGUN", "dmg": 15.0, "rate": 0.85, "mag": 6,  "spare": 18,  "reload": 2.0, "spread": 0.34,  "speed": 1300.0, "pellets": 10, "life": 0.27, "chip": 0.4,  "recoil": 7.0, "push": 140.0, "snd": "shotgun", "zooms": [1]},
 	"sniper":  {"name": "SNIPER",  "dmg": 75.0, "rate": 1.4,  "mag": 5,  "spare": 15,  "reload": 2.5, "spread": 0.004, "speed": 2600.0, "pellets": 1, "life": 0.9,  "chip": 0.8,  "recoil": 8.0, "push": 60.0,  "snd": "sniper", "zooms": [1, 2, 4, 6]},
 	"smg":     {"name": "SMG",     "dmg": 10.0, "rate": 0.085,"mag": 32, "spare": 128, "reload": 1.6, "spread": 0.08,  "speed": 1250.0, "pellets": 1, "life": 0.6,  "chip": 0.3,  "recoil": 2.5, "push": 0.0,   "snd": "smg", "zooms": [1]},
 	"shock":   {"name": "SHOCK",   "dmg": 14.0, "rate": 0.3,  "mag": 20, "spare": 60,  "reload": 1.8, "spread": 0.0,   "speed": 0.0,    "pellets": 1, "life": 0.0,  "chip": 0.0,  "recoil": 2.0, "push": 0.0,   "snd": "shock", "zooms": [1], "special": "shock"},
@@ -126,6 +126,8 @@ class Player:
 	var look := {}
 	var spawn_set := false
 	var shoot_buf := 0.0
+	var pump_done := -1.0
+	var down_t := 0.0
 	var hand_on := false
 	var hand_k := 0.0
 	var tk := 0
@@ -846,6 +848,53 @@ func _ready() -> void:
 				for i in 10:
 					update_game(1.0 / 60.0)
 				print("MINETEST2 enemy next to it: exploded=", not grenades_list.has(mn), " foe alive=", foe1.alive, " hp=", foe1.hp)
+			get_tree().quit()
+		if a == "--sittest":
+			cfg.bots = 1
+			reset_match()
+			state = "play"
+			var m: Player = players[my_idx]
+			var f: Player = players[1]
+			f.bot = false
+			m.bot = false
+			for i in 120:
+				update_game(1.0 / 60.0)
+			sit_hold = 30
+			for i in 30:
+				update_game(1.0 / 60.0)
+			print("SITTEST holding down: ", m.posture, " on_ground=", m.on_ground)
+			for i in 20:
+				update_game(1.0 / 60.0)
+			print("SITTEST let go: ", m.posture)
+			# blast next to a standing and a sitting soldier
+			m.protect_t = 0.0
+			var c0 := center(m)
+			m.hp = 100.0
+			explode_hits(c0.x + 40, c0.y, S.grenade_radius, S.grenade_dmg, f, "grenade")
+			var stand_loss := 100.0 - m.hp
+			m.alive = true
+			m.hp = 100.0
+			set_posture(m, "crouch")
+			c0 = center(m)
+			explode_hits(c0.x + 40, c0.y, S.grenade_radius, S.grenade_dmg, f, "grenade")
+			print("SITTEST grenade 40px away: standing loses %.0f hp, sitting loses %.0f hp" % [stand_loss, 100.0 - m.hp])
+			# shotgun: point blank vs far
+			for dist in [40.0, 150.0, 300.0]:
+				f.alive = true
+				f.hp = 100.0
+				f.protect_t = 0.0
+				set_posture(f, "stand")
+				m.alive = true
+				set_posture(m, "stand")
+				f.x = m.x + dist
+				f.y = m.y
+				m.aim = 0.0
+				m.slots[m.cur] = full_slot("shotgun")
+				bullets.clear()
+				fire(m, m.slots[m.cur])
+				for i in 30:
+					update_bullets(1.0 / 60.0)
+				print("SITTEST shotgun at %dpx: target hp 100 -> %.0f" % [int(dist), f.hp])
 			get_tree().quit()
 		if a == "--minetest":
 			reset_match()
@@ -1740,6 +1789,13 @@ func fire_fx(p: Player, wt: String, mz: Vector2) -> void:
 		q.spin = randf_range(-14, 14)
 		if wt == "ak47" or wt == "sniper":
 			add_part(mz.x, mz.y, cos(p.aim) * 30, sin(p.aim) * 30 - 10, 0.5, Color(0.85, 0.85, 0.85, 0.45), 6, -0.02, "smoke", 18)
+		if wt == "shotgun":
+			for k in 4:
+				var sa: float = p.aim + randf_range(-0.35, 0.35)
+				add_part(mz.x, mz.y, cos(sa) * randf_range(60, 140), sin(sa) * randf_range(60, 140) - 10, 0.6, Color(0.9, 0.88, 0.82, 0.5), 8, -0.03, "smoke", 30)
+			for k in 6:
+				var ka: float = p.aim + randf_range(-0.4, 0.4)
+				add_part(mz.x, mz.y, cos(ka) * randf_range(250, 420), sin(ka) * randf_range(250, 420), 0.12, Color("#ffd27a"), 2.5, 0.0)
 	elif wt == "rpg":
 		for i in 6:
 			add_part(mz.x - cos(p.aim) * 40, mz.y - sin(p.aim) * 40, -cos(p.aim) * 120 + randf_range(-40, 40), -sin(p.aim) * 120 + randf_range(-40, 40), 0.8, Color(0.8, 0.8, 0.8, 0.6), 10, -0.05, "smoke", 26)
@@ -1750,7 +1806,7 @@ func fire_fx(p: Player, wt: String, mz: Vector2) -> void:
 	else:
 		play_l(d.snd, mz, (-1.0 if wt == "ak47" else (-6.0 if wt == "minigun" else -4.0)) if is_me(p) else -7.0)
 	if is_me(p):
-		kick -= Vector2(cos(p.aim), sin(p.aim)) * minf(d.recoil * 0.5, 3.0)
+		kick -= Vector2(cos(p.aim), sin(p.aim)) * (6.0 if wt == "shotgun" else minf(d.recoil * 0.5, 3.0))
 
 func hitscan(p: Player, from: Vector2, a: float, dmg: float, chip: float) -> void:
 	var dir := Vector2(cos(a), sin(a))
@@ -1889,6 +1945,10 @@ func explode_hits(x: float, y: float, r: float, dmg: float, owner, gun: String) 
 		var big := r * 1.4
 		if d < big:
 			var f := clampf((1.0 - d / big) * 1.35, 0.0, 1.0)
+			if p.posture == "crouch":
+				f *= 0.55
+			elif p.posture == "prone":
+				f *= 0.4
 			if p.protect_t <= 0:
 				p.vx += dv.x / d * 560 * f
 				p.vy += dv.y / d * 560 * f
@@ -2056,14 +2116,16 @@ func update_player(p: Player, dt: float) -> void:
 	if p.in_water and not was_water and t > 0.5:
 		play("splash", c, -4.0)
 	# sit / crawl
-	if inp.down and not pv.get("down", false) and p.on_ground:
+	# hold down to sit; let go to stand up. A sniper who keeps holding lies down flat.
+	var want_post := "stand"
+	if inp.down and p.on_ground and not p.in_water:
+		p.down_t += dt
 		var w0 = p.slots[p.cur]
-		if p.posture == "stand":
-			set_posture(p, "crouch")
-		elif p.posture == "crouch" and w0 != null and w0.type == "sniper":
-			set_posture(p, "prone")
-		else:
-			set_posture(p, "stand")
+		want_post = "prone" if (w0 != null and w0.type == "sniper" and p.down_t > 0.6) else "crouch"
+	else:
+		p.down_t = 0.0
+	if p.posture != want_post and (p.on_ground or want_post == "stand"):
+		set_posture(p, want_post)
 	if inp.fly and p.posture != "stand":
 		if not set_posture(p, "stand"):
 			inp.fly = false
@@ -2923,8 +2985,16 @@ func update_bullets(dt: float) -> void:
 					else:
 						var head: bool = Vector2(b.x, b.y).distance_to(head_pos(p)) < 9.5
 						var dmg: float = b.dmg * (S.headshot if head else 1.0)
+						if b.gun == "shotgun":
+							# full power point blank, about a third at the end of its reach
+							dmg *= lerpf(1.0, 0.35, clampf(1.0 - b.life / maxf(0.01, b.max_life), 0.0, 1.0))
 						if p.protect_t <= 0:
-							p.vx += signf(b.vx) * 25
+							if b.gun == "shotgun":
+								var bd := Vector2(b.vx, b.vy).normalized()
+								p.vx += bd.x * 40
+								p.vy += bd.y * 22
+							else:
+								p.vx += signf(b.vx) * 25
 							blood(b.x, b.y, 4)
 						else:
 							sparks(b.x, b.y, Color("#9ff6ff"), 3)
@@ -3114,7 +3184,6 @@ func buttons() -> Array:
 	if cfg.fire_mode == "button":
 		var ap := def_aim()
 		out.append({"n": "FIRE", "p": Vector2(ap.x, ap.y - stick_rad() - r * 1.9), "r": r * 1.35})
-	out.append({"n": "SIT", "p": Vector2(mirror_x(safe_l + r + 14 * u), sh * 0.42), "r": r * 0.85})
 	# HAND sits right beside the aim stick, on the side towards the middle of the screen
 	var av := def_aim()
 	var side := -1.0 if not cfg.left_handed else 1.0
@@ -3483,7 +3552,7 @@ func human_input() -> void:
 		mx = signf(d.x) * clampf((ax - 5 * u) / (rad * 0.45), 0, 1) if ax > 5 * u else 0.0
 		if d.y < -rad * 0.42:
 			fly = true
-		if d.y > rad * 0.6 and absf(d.x) < rad * 0.5:
+		if d.y > rad * 0.55 and absf(d.x) < rad * 0.65:
 			inp.down = true
 	var c := center(me)
 	if stick_r != null:
@@ -3519,7 +3588,7 @@ func human_input() -> void:
 	inp.melee = key(KEY_F) or btn_held.has("MELEE")
 	inp.reload = key(KEY_R) or btn_held.has("RELOAD")
 	var stick_down: bool = stick_l != null and (stick_l.pos - stick_l.o).y > rad * 0.6 and absf((stick_l.pos - stick_l.o).x) < rad * 0.5
-	inp.down = key(KEY_S) or key(KEY_DOWN) or btn_held.has("SIT") or stick_down
+	inp.down = key(KEY_S) or key(KEY_DOWN) or stick_down
 	var pk := pick_request
 	if pk == "" and key(KEY_E):
 		pk = "first"
@@ -3773,6 +3842,9 @@ func update_game(dt: float) -> void:
 		human_input()
 		if zoom_test:
 			zoom_script(dt)
+		if sit_hold > 0:
+			players[my_idx].inp.down = true
+			sit_hold -= 1
 		if mt_throw > 0:
 			var mt: Player = players[my_idx]
 			mt.inp.grenade = mt_throw == 1
@@ -4041,8 +4113,8 @@ func _draw_inner() -> void:
 			draw_texture_rect(tex.glow, Rect2(-22, -7, 14, 14), false, Color(1, 0.7, 0.3, 0.9))
 			draw_set_transform_matrix(wt)
 		else:
-			var tl: float = 0.03 if b.gun == "sniper" else 0.016
-			draw_line(Vector2(b.x, b.y), Vector2(b.x - b.vx * tl, b.y - b.vy * tl), Color(1, 0.95, 0.7, 0.9), 2.6 if b.gun == "sniper" else 2.0, true)
+			var tl: float = 0.03 if b.gun == "sniper" else (0.012 if b.gun == "shotgun" else 0.016)
+			draw_line(Vector2(b.x, b.y), Vector2(b.x - b.vx * tl, b.y - b.vy * tl), Color(1, 0.88, 0.55, 0.95) if b.gun == "shotgun" else Color(1, 0.95, 0.7, 0.9), 2.6 if (b.gun == "sniper" or b.gun == "shotgun") else 2.0, true)
 	for g in grenades_list:
 		if g.kind == "smoke":
 			draw_set_transform_matrix(wt * Transform2D(g.rot, Vector2.ONE, 0.0, Vector2(g.x, g.y)))
@@ -4332,13 +4404,21 @@ func draw_player(p: Player, wt: Transform2D) -> void:
 			draw_line(Vector2((25.0 - m.grip[0]) * gd, by), Vector2((45.0 - m.grip[0]) * gd, by), Color(0.85, 0.88, 0.95, 0.55 * fl * p.spin), 1.2)
 	if p.muzzle_t > 0 and busy == "" and gun != "rpg" and not ["laser", "shock", "net", "flame"].has(gun):
 		var mz := Vector2(m.muzzle[0] - m.grip[0], m.muzzle[1] - m.grip[1]) * gd
-		var fw := 24.0 * (1.3 if gun == "shotgun" else 1.0)
-		draw_texture_rect(tex.flash, Rect2(mz.x - 1, mz.y - 7, fw, 14), false)
+		var fw := 24.0 * (2.0 if gun == "shotgun" else 1.0)
+		var fhh := 14.0 * (1.9 if gun == "shotgun" else 1.0)
+		draw_texture_rect(tex.flash, Rect2(mz.x - 1, mz.y - fhh / 2, fw, fhh), false)
 	if p.muzzle_t > 0 and (gun == "laser" or gun == "shock"):
 		var mz2 := Vector2(m.muzzle[0] - m.grip[0], m.muzzle[1] - m.grip[1]) * gd
 		draw_texture_rect(tex.glow, Rect2(mz2 - Vector2(8, 8), Vector2(16, 16)), false, Color(0.5, 0.95, 1, 0.9))
 	draw_set_transform_matrix(body)
 	var fh := grip if dual else front_hand
+	if gun == "shotgun" and busy == "" and not swim:
+		var pk := (t - p.shot_t - 0.22) / 0.32
+		if pk > 0.0 and pk < 1.0:
+			fh -= dir * sin(pk * PI) * 7.0
+			if pk < 0.12 and p.pump_done != p.shot_t:
+				p.pump_done = p.shot_t
+				play("reload", c, -12.0 if is_me(p) else -18.0, 0.0)
 	var ka := 0.0
 	if mk >= 0:
 		var e := mk * mk * (3.0 - 2.0 * mk)
@@ -4851,7 +4931,7 @@ func draw_menu() -> void:
 		"Antigravity: %s" % ("on" if (cfg.ev_flip or cfg.zones) else "off"),
 		"",
 		"HOW TO PLAY",
-		"Left thumb: move, push up to fly.",
+		"Left thumb: move, up to fly, hold down to sit.",
 		"Right thumb: aim" + (", push far to shoot." if cfg.fire_mode == "auto" else ", tap FIRE to shoot."),
 		"Walk near a gun and tap its bubble to take it.",
 		"Keys: A/D W S, mouse, G throw, 1-3 pick, Shift hand.",
@@ -7683,44 +7763,50 @@ func music_tick(delta: float) -> void:
 	elif music_vol <= -79.5 and music_player.playing:
 		music_player.stop()
 
-const CREDITS := [
+const CREDITS_L := [
 	["GAME", ""],
 	["Sky Squad", "Arc Light Studio"],
 	["Design and testing", "Arc Light Studio and friends"],
 	["Code, art and music", "Made with Claude (Anthropic)"],
 	["MUSIC", ""],
-	["Sky Squad Theme", "Original music made for this game"],
+	["Sky Squad Theme", "Original music for this game"],
+]
+const CREDITS_R := [
 	["SOUNDS", ""],
 	["Sound effects", "Kenney.nl (CC0)"],
-	["More sound effects", "The Freedoom project (BSD licence)"],
+	["More sound effects", "Freedoom project (BSD)"],
 	["ENGINE", ""],
-	["Godot Engine 4.3", "godotengine.org (MIT licence)"],
-	["", ""],
-	["Thanks for playing!", ""],
+	["Godot Engine 4.3", "godotengine.org (MIT)"],
 ]
 
 func draw_credits() -> void:
-	var w := minf(sw - 32 * u, 560 * u)
-	var h := minf(sh - 24 * u, 340 * u)
+	var w := minf(sw - 32 * u, 720 * u)
+	var h := minf(sh - 24 * u, 300 * u)
 	var r := panel(w, h)
-	var x := r.position.x + 28 * u
-	var y := r.position.y + 44 * u
-	txh("CREDITS", Vector2(x, y), 26 * u, C_ARC, 0, 5 * u)
-	y += 30 * u
-	for i in CREDITS.size():
-		var row: Array = CREDITS[i]
-		var k2 := ease_out((ui_t - 0.1 - i * 0.03) / 0.3)
-		var ga1 := ga
-		ga *= k2
-		if row[1] == "" and row[0] != "" and row[0] == row[0].to_upper():
-			y += 6 * u
-			txt(row[0], Vector2(x, y), 10 * u, C_CYAN)
-		else:
-			txt(row[0], Vector2(x, y), 12 * u, C_INK)
-			txt(row[1], Vector2(r.end.x - 28 * u, y), 12 * u, C_MUTED, 2)
-		ga = ga1
-		y += 18 * u
-	ui_button("BACK", Rect2(r.end.x - 132 * u, r.end.y - 54 * u, 108 * u, 38 * u), "back")
+	var x := r.position.x + 26 * u
+	var y := r.position.y + 42 * u
+	txh("CREDITS", Vector2(x, y), 24 * u, C_ARC, 0, 5 * u)
+	txt("Thanks for playing!", Vector2(r.end.x - 26 * u, y - 4 * u), 12 * u, C_MUTED, 2)
+	var colw := (w - 52 * u - 24 * u) / 2.0
+	for ci in 2:
+		var rows: Array = CREDITS_L if ci == 0 else CREDITS_R
+		var cx := x + ci * (colw + 24 * u)
+		var yy := y + 28 * u
+		for i in rows.size():
+			var row: Array = rows[i]
+			var k2 := ease_out((ui_t - 0.1 - i * 0.04) / 0.3)
+			var ga1 := ga
+			ga *= k2
+			if row[1] == "":
+				yy += 8 * u
+				txt(row[0], Vector2(cx, yy), 10 * u, C_CYAN)
+				yy += 16 * u
+			else:
+				txt(row[0], Vector2(cx, yy), 12 * u, C_INK)
+				txt(row[1], Vector2(cx, yy + 15 * u), 10.5 * u, C_MUTED)
+				yy += 34 * u
+			ga = ga1
+	ui_button("BACK", Rect2(r.end.x - 126 * u, r.end.y - 52 * u, 100 * u, 36 * u), "back")
 var st_mines := 0
 var st_mine_boom := 0
 var st_smokes := 0
@@ -7834,3 +7920,4 @@ func warm_up() -> void:
 			txh(WARM_TXT, Vector2(-4000, -4000), sz * u, Color(1, 1, 1, 0.01), 0, 5 * u)
 			txt(WARM_TXT, Vector2(-4000, -4000), sz, Color(1, 1, 1, 0.01), 0, 3)
 var lf_total := 0
+var sit_hold := 0
