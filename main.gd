@@ -1,13 +1,13 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.6
+# Sky Squad - Arc Light Studio. Playtest build 1.7
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.6"
+const VERSION := "1.7"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
-const MENU_STATES := ["menu", "match_cfg", "ctrl_cfg", "lan", "lan_join", "ipkey", "connecting", "lobby", "lan_cfg", "locker", "namekey", "online"]
+const MENU_STATES := ["menu", "match_cfg", "ctrl_cfg", "lan", "lan_join", "ipkey", "connecting", "lobby", "lan_cfg", "locker", "namekey", "online", "credits"]
 # ---- avatar data (made by make_avatar_layers.py) ----
 const AV_RECT := {"face": [19.667, 11.667, 23.0, 23.0], "f_none": [34.0, 21.0, 5.667, 6.0], "f_goggles": [31.667, 21.333, 10.667, 7.0], "f_shades": [31.667, 21.0, 11.0, 6.667], "f_patch": [21.0, 17.333, 20.0, 10.333], "f_scar": [32.0, 19.0, 8.667, 9.0], "f_paint": [28.0, 21.0, 13.667, 9.0], "f_mooch": [32.667, 21.0, 9.667, 10.0], "f_cyber": [30.667, 20.667, 13.0, 7.0], "f_monocle": [33.0, 20.0, 7.0, 13.0], "f_cheeky": [31.0, 21.0, 10.0, 11.667], "h_classic": [18.667, 9.0, 27.0, 15.667], "h_beret": [18.667, 8.667, 21.0, 13.0], "h_bandana": [13.667, 10.0, 29.333, 17.0], "h_ninja": [12.667, 11.0, 30.333, 24.0], "h_pilot": [18.0, 9.0, 26.0, 19.667], "h_astro": [16.667, 8.667, 29.0, 29.0], "h_nvg": [18.667, 9.0, 27.0, 15.667], "h_cowboy": [15.0, 6.667, 33.0, 16.333], "h_cap": [13.667, 9.0, 29.333, 14.667], "h_viking": [15.0, 5.333, 31.0, 19.333], "h_marine": [18.0, 9.667, 26.0, 26.0], "h_turban": [18.0, 7.667, 25.0, 16.333], "h_samurai": [14.667, 1.0, 32.667, 27.0], "h_gasmask": [18.667, 9.0, 27.0, 26.667], "h_robot": [18.667, 3.0, 25.0, 31.667], "h_hoodie": [17.667, 9.0, 25.0, 29.0], "h_pumpkin": [17.667, 8.0, 27.0, 27.667], "h_halo": [18.667, 3.667, 27.0, 21.0], "h_crown": [18.667, 4.333, 27.0, 20.333], "o_army_shirt": [20.667, 29.667, 20.0, 22.0], "o_army": [21.0, 32.0, 18.667, 18.333], "o_desert": [20.667, 29.667, 20.0, 22.0], "o_urban": [20.667, 29.667, 20.0, 22.0], "o_snow": [20.667, 29.667, 20.0, 22.0], "o_ninja": [20.667, 29.667, 20.0, 22.0], "o_jumpsuit": [20.667, 29.667, 20.0, 22.0], "o_hazmat": [20.667, 29.667, 20.0, 22.0], "o_mech": [20.667, 29.667, 20.0, 22.0], "o_hero": [20.667, 29.667, 20.0, 22.0], "o_agent": [20.667, 29.667, 20.0, 22.0], "o_kurta": [20.667, 29.667, 20.0, 22.0], "o_hawaii": [20.667, 29.667, 20.0, 22.0], "o_samurai": [20.667, 29.667, 20.0, 22.0], "o_street": [20.667, 29.667, 20.0, 22.0], "j_twin": [18.0, 29.667, 14.0, 26.0], "j_rocket": [13.667, 24.333, 18.667, 30.667], "j_fan": [12.667, 20.667, 23.0, 31.0], "j_wings": [4.0, 23.0, 26.667, 28.667], "j_barrel": [16.667, 29.667, 15.0, 24.0], "j_butterfly": [5.0, 21.333, 25.667, 30.333], "j_dragon": [11.0, 29.667, 19.667, 29.667], "j_chrome": [17.667, 28.667, 14.333, 24.0], "j_hover": [15.0, 31.667, 18.667, 29.0], "j_fireworks": [15.667, 26.333, 15.0, 26.333], "j_umbrella": [8.667, 12.667, 31.0, 39.0], "x_bandolier": [21.333, 31.333, 17.333, 17.333], "x_cape": [9.0, 30.667, 22.333, 34.667], "x_scarf": [7.0, 28.667, 31.667, 10.333], "x_sword": [11.0, 22.0, 25.667, 40.0], "x_antenna": [11.0, 15.0, 12.667, 34.667], "x_pads": [34.667, 28.667, 9.0, 8.0], "x_tags": [25.0, 34.0, 11.0, 7.667], "x_pet": [1.0, 14.0, 14.0, 12.667], "x_flag": [8.0, 13.0, 13.0, 38.667]}
 const AV_LIST := {"h": [["classic", "Combat helmet"], ["beret", "Commando beret"], ["bandana", "Rambo bandana"], ["ninja", "Ninja hood"], ["pilot", "Pilot helmet"], ["astro", "Astronaut bubble"], ["nvg", "Night-vision helmet"], ["cowboy", "Cowboy hat"], ["cap", "Backwards cap"], ["viking", "Viking horns"], ["marine", "Space marine"], ["turban", "Pagdi / turban"], ["samurai", "Samurai kabuto"], ["gasmask", "Gas mask"], ["robot", "Robot head"], ["hoodie", "Street hoodie"], ["pumpkin", "Pumpkin"], ["halo", "Angel halo"], ["crown", "Champion crown"]], "f": [["goggles", "Flight goggles"], ["shades", "Aviator shades"], ["patch", "Eye patch"], ["scar", "Battle scar"], ["paint", "War paint"], ["mooch", "Big mooch"], ["cyber", "Cyber visor"], ["monocle", "Gentleman monocle"], ["cheeky", "Cheeky grin"], ["none", "No glasses"]], "o": [["army", "Army vest"], ["desert", "Desert camo"], ["urban", "Urban grey camo"], ["snow", "Snow camo"], ["ninja", "Shadow ninja"], ["jumpsuit", "Pilot jumpsuit"], ["hazmat", "Hazmat suit"], ["mech", "Mech armour"], ["hero", "Super-hero suit"], ["agent", "Secret agent suit"], ["kurta", "Festive kurta"], ["hawaii", "Beach shirt"], ["samurai", "Samurai armour"], ["street", "Street hoodie"]], "j": [["twin", "Twin tanks"], ["rocket", "Space rocket"], ["fan", "Heli-fan"], ["wings", "Metal wings"], ["barrel", "DIY barrel"], ["butterfly", "Neon butterfly"], ["dragon", "Dragon pack"], ["chrome", "Chrome racer"], ["hover", "Hover rings"], ["fireworks", "Diwali rockets"], ["umbrella", "Umbrella glider"]], "x": [["none", "No extra"], ["bandolier", "Ammo bandolier"], ["cape", "Hero cape"], ["scarf", "Flying scarf"], ["sword", "Katana on back"], ["antenna", "Radio backpack"], ["pads", "Armour pads"], ["tags", "Dog tags"], ["pet", "Drone buddy"], ["flag", "India flag"]], "fl": [["orange", "Fire orange"], ["blue", "Plasma blue"], ["green", "Toxic green"], ["purple", "Void purple"], ["pink", "Candy pink"], ["gold", "Golden"], ["none", "Silent (no flame)"]]}
@@ -32,7 +32,7 @@ const S := {
 	"hp_max": 100.0, "regen_delay": 4.0, "regen_rate": 6.0, "respawn": 3.5,
 	"match_time": 300.0, "event_every": 60.0, "event_warn": 8.0, "flip_time": 15.0, "flip_ease": 1.6,
 	"water_dps": 6.0, "start_grenades": 3, "max_grenades": 3, "max_bombs": 3, "max_smokes": 3,
-	"grenade_fuse": 2.5, "grenade_radius": 80.0, "grenade_dmg": 80.0,
+	"grenade_fuse": 2.2, "grenade_radius": 100.0, "grenade_dmg": 105.0,
 	"rocket_radius": 72.0, "rocket_dmg": 70.0, "pickup_respawn": 15.0,
 	"aim_turn": 18.0, "mouse_turn": 30.0, "protect": 2.5, "view_h": 390.0, "headshot": 1.6, "crouch_speed": 0.45, "crawl_speed": 0.3,
 	"gun_draw": 0.78,
@@ -41,7 +41,7 @@ const WD := {
 	"magnum":  {"name": "MAGNUM",  "dmg": 26.0, "rate": 0.40, "mag": 7,  "spare": 28,  "reload": 1.3, "spread": 0.02,  "speed": 1250.0, "pellets": 1, "life": 0.8,  "chip": 0.5,  "recoil": 4.0, "push": 0.0,   "snd": "magnum", "zooms": [1]},
 	"uzi":     {"name": "UZI",     "dmg": 8.0,  "rate": 0.075,"mag": 30, "spare": 120, "reload": 1.5, "spread": 0.13,  "speed": 1100.0, "pellets": 1, "life": 0.45, "chip": 0.25, "recoil": 2.0, "push": 0.0,   "snd": "uzi", "zooms": [1]},
 	"ak47":    {"name": "AK-47",   "dmg": 17.0, "rate": 0.11, "mag": 30, "spare": 90,  "reload": 1.9, "spread": 0.045, "speed": 1400.0, "pellets": 1, "life": 0.85, "chip": 0.45, "recoil": 5.0, "push": 0.0,   "snd": "ak47", "zooms": [1, 2]},
-	"shotgun": {"name": "SHOTGUN", "dmg": 11.0, "rate": 0.95, "mag": 6,  "spare": 18,  "reload": 2.2, "spread": 0.32,  "speed": 1050.0, "pellets": 8, "life": 0.32, "chip": 0.4,  "recoil": 7.0, "push": 140.0, "snd": "shotgun", "zooms": [1]},
+	"shotgun": {"name": "SHOTGUN", "dmg": 14.0, "rate": 0.9,  "mag": 6,  "spare": 18,  "reload": 2.0, "spread": 0.24,  "speed": 1150.0, "pellets": 8, "life": 0.36, "chip": 0.4,  "recoil": 7.0, "push": 140.0, "snd": "shotgun", "zooms": [1]},
 	"sniper":  {"name": "SNIPER",  "dmg": 75.0, "rate": 1.4,  "mag": 5,  "spare": 15,  "reload": 2.5, "spread": 0.004, "speed": 2600.0, "pellets": 1, "life": 0.9,  "chip": 0.8,  "recoil": 8.0, "push": 60.0,  "snd": "sniper", "zooms": [1, 2, 4, 6]},
 	"smg":     {"name": "SMG",     "dmg": 10.0, "rate": 0.085,"mag": 32, "spare": 128, "reload": 1.6, "spread": 0.08,  "speed": 1250.0, "pellets": 1, "life": 0.6,  "chip": 0.3,  "recoil": 2.5, "push": 0.0,   "snd": "smg", "zooms": [1]},
 	"shock":   {"name": "SHOCK",   "dmg": 14.0, "rate": 0.3,  "mag": 20, "spare": 60,  "reload": 1.8, "spread": 0.0,   "speed": 0.0,    "pellets": 1, "life": 0.0,  "chip": 0.0,  "recoil": 2.0, "push": 0.0,   "snd": "shock", "zooms": [1], "special": "shock"},
@@ -126,6 +126,10 @@ class Player:
 	var look := {}
 	var spawn_set := false
 	var shoot_buf := 0.0
+	var hand_on := false
+	var hand_k := 0.0
+	var tk := 0
+	var born_srv := -9.0
 	var jit_last := Vector2.ZERO
 	var jit_prev := Vector2.ZERO
 	var jit_ok := false
@@ -203,7 +207,7 @@ class Player:
 	var recoil := 0.0
 	var muzzle_t := 0.0
 	var shot_t := -9.0
-	var inp := {"mx": 0.0, "fly": false, "shoot": false, "swap": false, "grenade": false, "melee": false, "reload": false, "aim": 0.0, "down": false, "pick": "", "zoom": false, "bomb": false, "smoke": false}
+	var inp := {"mx": 0.0, "fly": false, "shoot": false, "swap": false, "grenade": false, "melee": false, "reload": false, "aim": 0.0, "down": false, "pick": "", "zoom": false, "bomb": false, "smoke": false, "tk": 0, "hand": false}
 	var prev := {}
 	var melee_anim := 0.0
 	var posture := "stand"
@@ -383,7 +387,7 @@ var cfg := {
 	"ev_water": true, "ev_roof": true, "ev_brk": true, "ev_flip": false, "zones": false, "map": "sky",
 	"fire_mode": "auto", "sticks": "floating", "stick_size": 1.0, "btn_size": 1.0, "opacity": 0.7,
 	"left_handed": false, "aim_sens": "medium", "vibration": true, "sound": true,
-	"name": "", "show_fps": false, "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
+	"name": "", "show_fps": false, "music": true, "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
 }
 const MATCH_ROWS := [
 	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
@@ -422,6 +426,7 @@ const CONTROL_ROWS := [
 	["aim_sens", "Aim sensitivity", ["low", "medium", "high"], ["Low", "Medium", "High"]],
 	["vibration", "Vibration", [true, false], ["On", "Off"]],
 	["sound", "Sound", [true, false], ["On", "Off"]],
+	["music", "Menu music", [true, false], ["On", "Off"]],
 	["show_fps", "Show FPS", [false, true], ["Off", "On"]],
 ]
 var ui_btns: Array = []
@@ -633,6 +638,13 @@ func _ready() -> void:
 		st.loop_begin = 0
 		st.loop_end = st.data.size() / 2
 		loops[ln] = st
+	music_player = AudioStreamPlayer.new()
+	var mst: AudioStreamOggVorbis = load("res://music/theme.ogg")
+	if mst != null:
+		mst.loop = true
+		music_player.stream = mst
+	music_player.volume_db = -80.0
+	add_child(music_player)
 	for pn in ["amb", "water", "torch"]:
 		var ap := AudioStreamPlayer.new()
 		ap.volume_db = -80
@@ -800,6 +812,25 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--screen="):
 			state = a.substr(9)
+		if a == "--minetest":
+			reset_match()
+			var me0: Player = players[my_idx]
+			var foe: Player = players[1]
+			var gm := Grenade.new()
+			gm.kind = "bomb"; gm.owner = me0
+			var fc := center(foe)
+			gm.x = fc.x + 200; gm.y = fc.y
+			gm.stuck = true; gm.fuse = 0.0
+			grenades_list.append(gm)
+			for i in 5:
+				update_grenades(0.3)
+			print("MINETEST far: mine still there=", grenades_list.has(gm), " (should be true)")
+			gm.x = fc.x + 20
+			var hp0 := foe.hp
+			foe.protect_t = 0.0
+			update_grenades(0.05)
+			print("MINETEST near: mine gone=", not grenades_list.has(gm), " foe hp ", hp0, " -> ", foe.hp, " alive=", foe.alive)
+			get_tree().quit()
 		if a == "--zoomtest":
 			zoom_test = true
 			cfg.bots = 0
@@ -1158,10 +1189,15 @@ func drop_gun(x: float, y: float, type: String, ammo) -> void:
 			if Vector2(k.x - (x + off), k.y - y).length() < 30:
 				free = false
 				break
-		if free and not rect_hits(x + off, y, 24, 16):
+		if free and not rect_hits(x + off, y, 24, 16) and los(Vector2(x, y + 8), Vector2(x + off + 12, y + 8)):
 			pickups.append(make_pickup("drop", x + off, y, type, ammo))
 			return
-	pickups.append(make_pickup("drop", x, y, type, ammo))
+	var yy := y
+	for _i in 12:
+		if not rect_hits(x, yy, 24, 16):
+			break
+		yy -= gsign() * T * 0.5
+	pickups.append(make_pickup("drop", x, yy, type, ammo))
 
 func zoom_level(p: Player) -> int:
 	var w = p.slots[p.cur]
@@ -1297,6 +1333,17 @@ func spawn_at(p: Player, best: Vector2) -> void:
 	p.spawn_set = false
 	p.fire_lock = true
 	p.born_t = time_s
+	p.born_srv = t
+	p.melee_anim = 0.0
+	p.switch_t = 0.0
+	p.reload_t = 0.0
+	p.reload_k = 0.0
+	p.muzzle_t = 0.0
+	p.recoil = 0.0
+	p.burn_t = 0.0
+	p.stun_t = 0.0
+	p.net_t = 0.0
+	p.shoot_buf = 0.0
 	p.protect_t = S.protect
 	if t > 0.5:
 		play("spawn", Vector2(best.x + 10, best.y + 21), -6.0 if is_me(p) else -12.0, 0.05)
@@ -1805,7 +1852,7 @@ func explode_hits(x: float, y: float, r: float, dmg: float, owner, gun: String) 
 		var d: float = maxf(dv.length(), 1.0)
 		var big := r * 1.4
 		if d < big:
-			var f := 1.0 - d / big
+			var f := clampf((1.0 - d / big) * 1.35, 0.0, 1.0)
 			if p.protect_t <= 0:
 				p.vx += dv.x / d * 560 * f
 				p.vy += dv.y / d * 560 * f
@@ -2010,6 +2057,11 @@ func update_player(p: Player, dt: float) -> void:
 		post_mul *= 0.72
 	var target: float = inp.mx * S.move_speed * (0.55 if p.in_water else 1.0) * post_mul
 	var acc := 2600.0 if p.on_ground else 1500.0
+	p.hand_on = hand_ok(p, bool(inp.get("hand", false)))
+	if p.hand_on:
+		target *= HAND_SPEED
+		acc *= 1.3
+		st_hand += dt
 	if target != 0.0 and signf(target) != signf(p.vx):
 		acc *= 1.5
 	if p.vx < target:
@@ -2086,6 +2138,7 @@ func update_player(p: Player, dt: float) -> void:
 		var la0 := clampf(atan2(sin(p.aim) * gs0, cos(p.aim) * face0), -0.45, 0.3)
 		p.aim = atan2(sin(la0) * gs0, cos(la0) * face0)
 	animate(p, dt)
+	p.hand_k = move_toward(p.hand_k, 1.0 if p.hand_on else 0.0, dt * 7.0)
 	var w = p.slots[p.cur]
 	if p.reload_t > 0:
 		p.reload_t -= dt
@@ -2106,6 +2159,8 @@ func update_player(p: Player, dt: float) -> void:
 		p.shoot_buf = 0.22
 	p.shoot_buf -= dt
 	var want_fire: bool = (inp.shoot or p.shoot_buf > 0.0) and not p.fire_lock
+	if p.melee_anim > 0.05 or p.switch_t > 0.06 or t - p.born_srv < 0.45 or p.hand_on:
+		want_fire = false
 	if want_fire and w != null and p.reload_t <= 0 and p.fire_cd <= 0 and p.stun_t <= 0 and (not mini or p.spin >= 1.0 or w.mag == 0):
 		if w.mag > 0:
 			fire(p, w)
@@ -2147,10 +2202,19 @@ func update_player(p: Player, dt: float) -> void:
 		if zs.size() > 1:
 			w.zi = (w.zi + 1) % zs.size()
 			me_fx(p, "snd", ["swap", -10.0, 0.0])
-	var none_left: bool = (inp.grenade and not pv.get("grenade", false) and p.grenades <= 0) or (inp.bomb and not pv.get("bomb", false) and p.bombs <= 0) or (inp.get("smoke", false) and not pv.get("smoke", false) and p.smokes <= 0)
+	var thr: bool = inp.grenade and not pv.get("grenade", false)
+	p.tk = pick_kind(p, int(inp.get("tk", 0)))
+	var do_frag: bool = thr and p.tk == 0
+	var do_mine: bool = (thr and p.tk == 1) or (inp.bomb and not pv.get("bomb", false))
+	var do_smoke: bool = (thr and p.tk == 2) or (inp.get("smoke", false) and not pv.get("smoke", false))
+	if p.hand_on:
+		do_frag = false
+		do_mine = false
+		do_smoke = false
+	var none_left: bool = (thr and p.grenades + p.bombs + p.smokes <= 0) or (inp.bomb and not pv.get("bomb", false) and p.bombs <= 0) or (inp.get("smoke", false) and not pv.get("smoke", false) and p.smokes <= 0)
 	if none_left:
 		me_fx(p, "snd", ["locked", -6.0])
-	if inp.grenade and not pv.get("grenade", false) and p.grenades > 0 and p.g_cd <= 0:
+	if do_frag and p.grenades > 0 and p.g_cd <= 0:
 		p.grenades -= 1
 		p.g_cd = 0.7
 		var g := Grenade.new()
@@ -2162,7 +2226,7 @@ func update_player(p: Player, dt: float) -> void:
 		g.owner = p
 		grenades_list.append(g)
 		play("throw", c, -8.0)
-	if inp.bomb and not pv.get("bomb", false) and p.bombs > 0 and p.g_cd <= 0:
+	if do_mine and p.bombs > 0 and p.g_cd <= 0:
 		p.bombs -= 1
 		p.g_cd = 0.7
 		var gb := Grenade.new()
@@ -2170,12 +2234,12 @@ func update_player(p: Player, dt: float) -> void:
 		gb.x = spb.x; gb.y = spb.y
 		gb.vx = cos(p.aim) * 330 + p.vx * 0.3
 		gb.vy = sin(p.aim) * 330 + p.vy * 0.2
-		gb.fuse = 4.5
+		gb.fuse = 30.0
 		gb.kind = "bomb"
 		gb.owner = p
 		grenades_list.append(gb)
 		play("throw", c, -8.0)
-	if inp.get("smoke", false) and not pv.get("smoke", false) and p.smokes > 0 and p.g_cd <= 0:
+	if do_smoke and p.smokes > 0 and p.g_cd <= 0:
 		p.smokes -= 1
 		p.g_cd = 0.7
 		var gsm := Grenade.new()
@@ -2225,7 +2289,8 @@ func update_player(p: Player, dt: float) -> void:
 	if p.alive:
 		for k in pickups.duplicate():
 			var human_choice: bool = not p.bot and (k.type == "gun" or k.type == "drop") and not pickup_opts(p, k).is_empty()
-			if overlaps(p, k) and not human_choice and try_pickup(p, k):
+			if overlaps(p, k) and not human_choice and reach_ok(center(p), k) and try_pickup(p, k):
+				st_picks += 1
 				remove_pickup(k)
 				me_fx(p, "snd", ["health" if k.type == "health" else ("wpick" if (k.type == "gun" or k.type == "drop") else "pickup"), -6.0])
 	p.prev = inp.duplicate()
@@ -2237,14 +2302,14 @@ func near_gun(p: Player):
 	for k in pickups:
 		if k.type == "gun" or k.type == "drop":
 			var d := Vector2(k.x + k.w / 2.0 - c.x, (k.y + k.h / 2.0 - c.y) * 0.7).length()
-			if d < bd:
+			if d < bd and reach_ok(c, k):
 				bd = d
 				best = k
 	if best != null:
 		p.near_k = best
 		p.near_t = t
 		return best
-	if p.near_k != null and pickups.has(p.near_k) and t - p.near_t < 1.6 and Vector2(p.near_k.x - c.x, p.near_k.y - c.y).length() < 150:
+	if p.near_k != null and pickups.has(p.near_k) and t - p.near_t < 0.4 and Vector2(p.near_k.x - c.x, p.near_k.y - c.y).length() < 70 and reach_ok(c, p.near_k):
 		return p.near_k
 	return null
 
@@ -2456,7 +2521,7 @@ func bot_think(b: Player, dt: float) -> void:
 	var tg = b.target if (b.target != null and b.target.alive) else null
 	var visible := false
 	if tg != null:
-		visible = los(eye, center(tg))
+		visible = los(eye, center(tg)) and not smoke_blocks(eye, center(tg))
 		if visible:
 			b.target_pos = center(tg)
 			b.target_seen_t = t
@@ -2839,17 +2904,19 @@ func update_grenades(dt: float) -> void:
 	for i in range(grenades_list.size() - 1, -1, -1):
 		var g: Grenade = grenades_list[i]
 		if g.kind == "bomb":
-			g.beep_t -= dt
-			if g.beep_t <= 0:
-				g.beep_t = 0.15 + g.fuse * 0.18
-				play("beep", Vector2(g.x, g.y), -4.0, 0.0)
 			if g.stuck:
-				if g.beep_t > 0.9:
-					g.beep_t = 0.3
-				g.fuse -= dt
-				if g.fuse <= 0:
-					explode(g.x, g.y, 120.0, 115.0, g.owner, "bomb")
-					grenades_list.remove_at(i)
+				# fuse counts up here: time since it was planted
+				g.fuse += dt
+				g.beep_t -= dt
+				if g.fuse > MINE_ARM:
+					var near := mine_target(g)
+					if g.beep_t <= 0:
+						g.beep_t = 0.25 if near else 1.6
+						play("beep", Vector2(g.x, g.y), -6.0 if near else -16.0, 0.0)
+					if near or g.fuse > MINE_LIFE:
+						st_mine_boom += 1
+						explode(g.x, g.y, 120.0, 125.0, g.owner, "bomb")
+						grenades_list.remove_at(i)
 				continue
 		var z = zone_at(g.x, g.y)
 		g.vy += S.gravity * (z.g if z != null else 1.0) * g_dir * dt
@@ -2864,7 +2931,7 @@ func update_grenades(dt: float) -> void:
 			g.vx *= -0.4
 			if g.kind == "bomb":
 				if not g.stuck:
-					play("arm", Vector2(g.x, g.y), -2.0, 0.0)
+					plant_mine(g)
 				g.stuck = true
 		else:
 			g.x = nx
@@ -2876,14 +2943,16 @@ func update_grenades(dt: float) -> void:
 			g.vx *= 0.7
 			if g.kind == "bomb":
 				if not g.stuck:
-					play("arm", Vector2(g.x, g.y), -2.0, 0.0)
+					plant_mine(g)
 				g.stuck = true
 		else:
 			g.y = ny
-		g.fuse -= dt
-		if g.fuse <= 0:
+		if g.kind != "bomb":
+			g.fuse -= dt
+		if g.fuse <= 0 or (g.kind == "bomb" and (g.y > WH or g.y < 0)):
 			if g.kind == "smoke":
-				clouds.append({"x": g.x, "y": g.y, "t": 7.0, "owner": g.owner})
+				clouds.append({"x": g.x, "y": g.y, "t": SMOKE_T, "owner": g.owner})
+				st_smokes += 1
 				play("hiss", Vector2(g.x, g.y), -1.0)
 				grenades_list.remove_at(i)
 				continue
@@ -2894,9 +2963,11 @@ func update_grenades(dt: float) -> void:
 			grenades_list.remove_at(i)
 
 func cloud_fx(cl: Dictionary, dt: float) -> void:
+	# a few drifting wisps on top of the big puffs drawn in draw_clouds
 	var k: float = clampf(cl.t / 1.5, 0.0, 1.0)
-	if randf() < dt * 16.0 * k:
-		add_part(cl.x + randf_range(-80, 80), cl.y + randf_range(-55, 40), randf_range(-12, 12), randf_range(-14, 4), 2.4, Color(0.62, 0.74, 0.55, 0.55), 40, -0.004, "smoke", 96)
+	if randf() < dt * 6.0 * k:
+		var a := randf() * TAU
+		add_part(cl.x + cos(a) * SMOKE_R * 0.9, cl.y + sin(a) * SMOKE_R * 0.6, cos(a) * 14.0, sin(a) * 8.0 - 6.0, 2.6, Color(0.7, 0.78, 0.66, 0.35), 50, -0.004, "smoke", 110)
 
 func update_clouds(dt: float) -> void:
 	for i in range(clouds.size() - 1, -1, -1):
@@ -2909,8 +2980,8 @@ func update_clouds(dt: float) -> void:
 		for p in players:
 			if not p.alive or p == cl.owner:
 				continue
-			if center(p).distance_to(Vector2(cl.x, cl.y)) < 105:
-				hurt(p, 7.0 * dt, cl.owner, "gas", "smoke")
+			if in_cloud(cl, center(p)):
+				hurt(p, 4.0 * dt, cl.owner, "gas", "smoke")
 				if t - p.cough_t > 1.3 or t < p.cough_t:
 					p.cough_t = t
 					me_fx(p, "snd", ["cough", -3.0])
@@ -3002,15 +3073,15 @@ func buttons() -> Array:
 		var me: Player = players[my_idx]
 		var w = me.slots[me.cur]
 		if w != null and WD[w.type].zooms.size() > 1:
-			out.append({"n": "ZOOM", "p": Vector2(bx + inward * r * 2.5, sh * 0.30), "r": r * 0.85})
-		if me.bombs > 0:
-			out.append({"n": "BOMB", "p": Vector2(bx + inward * r * 2.5, sh * 0.47), "r": r * 0.85})
-		if me.smokes > 0:
-			out.append({"n": "SMOKE", "p": Vector2(bx + inward * r * 2.5, sh * 0.64), "r": r * 0.85})
+			out.append({"n": "ZOOM", "p": Vector2(bx + inward * r * 3.7, sh * 0.30), "r": r * 0.85})
+		# the three throwables next to the THROW button: tap one to pick it
+		for kk in 3:
+			out.append({"n": "TK%d" % kk, "p": Vector2(bx + inward * r * 1.95, sh * 0.30 + (kk - 1) * r * 1.3), "r": r * 0.6})
 	if cfg.fire_mode == "button":
 		var ap := def_aim()
 		out.append({"n": "FIRE", "p": Vector2(ap.x, ap.y - stick_rad() - r * 1.9), "r": r * 1.35})
 	out.append({"n": "SIT", "p": Vector2(mirror_x(safe_l + r + 14 * u), sh * 0.42), "r": r * 0.85})
+	out.append({"n": "HAND", "p": Vector2(mirror_x(safe_l + r + 14 * u), sh * 0.26), "r": r * 0.85})
 	return out
 
 func _notification(what: int) -> void:
@@ -3024,7 +3095,7 @@ func go_back(can_quit: bool) -> void:
 			jet_player.stop()
 		"paused":
 			state = "play"
-		"match_cfg", "ctrl_cfg", "lan":
+		"match_cfg", "ctrl_cfg", "lan", "credits":
 			state = "menu"
 		"over":
 			if net_role == "":
@@ -3132,7 +3203,10 @@ func press(id: int, pos: Vector2) -> void:
 			pick_request = bb.opt
 			return
 	for b in buttons():
-		if pos.distance_to(b.p) < b.r + 12 * u:
+		if pos.distance_to(b.p) < b.r + (6 if b.n.begins_with("TK") else 12) * u:
+			if b.n.begins_with("TK"):
+				my_tk = int(b.n.substr(2))
+				return
 			btn_held[b.n] = id
 			return
 	var fixed: bool = cfg.sticks == "fixed"
@@ -3299,6 +3373,8 @@ func do_action(a: String) -> void:
 			state = "match_cfg"
 		"controls":
 			state = "ctrl_cfg"
+		"credits":
+			state = "credits"
 		"back", "menu":
 			if net_role != "":
 				net_close()
@@ -3397,6 +3473,12 @@ func human_input() -> void:
 	inp.smoke = key(KEY_C) or btn_held.has("SMOKE")
 	inp.swap = key(KEY_Q) or btn_held.has("SWAP")
 	inp.grenade = key(KEY_G) or btn_held.has("GRENADE")
+	for kk in 3:
+		if key([KEY_1, KEY_2, KEY_3][kk]):
+			my_tk = kk
+	my_tk = pick_kind(me, my_tk)
+	inp.tk = my_tk
+	inp.hand = key(KEY_SHIFT) or btn_held.has("HAND")
 	inp.melee = key(KEY_F) or btn_held.has("MELEE")
 	inp.reload = key(KEY_R) or btn_held.has("RELOAD")
 	var stick_down: bool = stick_l != null and (stick_l.pos - stick_l.o).y > rad * 0.6 and absf((stick_l.pos - stick_l.o).x) < rad * 0.5
@@ -3449,6 +3531,24 @@ func shot_pose() -> void:
 			var gb := Grenade.new()
 			gb.x = me.x + 60; gb.y = me.y + me.h - 8; gb.kind = "bomb"; gb.stuck = true; gb.fuse = 3.2; gb.owner = me
 			grenades_list.append(gb)
+		if a == "--swim":
+			set_posture(me, "stand")
+			me.protect_t = 0.0
+			me.born_t = -10.0
+			me.y -= 70
+			me.on_ground = false
+			me.vx = 170
+			me.hand_on = true
+			me.hand_k = 1.0
+			me.jet_on = true
+		if a == "--mine":
+			var gm := Grenade.new()
+			gm.x = me.x + 120; gm.y = me.y + me.h - 6; gm.kind = "bomb"; gm.stuck = true; gm.fuse = 2.0; gm.owner = me
+			grenades_list.append(gm)
+		if a == "--smoke":
+			clouds.append({"x": me.x - 230, "y": me.y - 10, "t": SMOKE_T - 3.0, "owner": null})
+		if a == "--touchhud":
+			touch_mode = true
 		if a == "--crowd":
 			for i in range(1, players.size()):
 				var o: Player = players[i]
@@ -3541,6 +3641,7 @@ func _process_inner(delta: float) -> void:
 		safe_l = maxf(0.0, float(safe.position.x))
 		safe_r = maxf(0.0, float(scr.x - safe.end.x))
 	anim_tick(delta)
+	music_tick(delta)
 	if dedicated:
 		dedicated_tick(delta, dt)
 		return
@@ -3597,6 +3698,7 @@ func _process_inner(delta: float) -> void:
 		for p in players:
 			print("%s (%s) side=%d kills=%d deaths=%d" % [p.pname, p.style, p.side, p.kills, p.deaths])
 		print("guns used: ", guns_used, " team scores: ", team_scores())
+		print("v17 stats: mines_planted=%d mines_boom=%d smokes=%d hand_secs=%.1f pickups_taken=%d" % [st_mines, st_mine_boom, st_smokes, st_hand, st_picks])
 		print("events seen: ", seen_events.keys(), " dirt left: ", tiles.count(DIRT), " of ", start_dirt, " explosions: ", explosions, " postures: ", post_count, " pickups: ", pickups.size())
 		get_tree().quit()
 	queue_redraw()
@@ -3633,6 +3735,8 @@ func update_game(dt: float) -> void:
 	for p in players:
 		if p.bot:
 			bot_think(p, dt)
+			# bots paddle with their hands when travelling through the air and not in a fight
+			p.inp.hand = not p.on_ground and absf(float(p.inp.mx)) > 0.6 and p.air_t > 0.35 and not bool(p.inp.shoot) and (p.target == null or not p.target.alive)
 	for p in players:
 		if p.remote and not p.press_hold.is_empty():
 			for kk in p.press_hold.keys():
@@ -3788,6 +3892,7 @@ func _draw_inner() -> void:
 	_pm("bg")
 	var shk := randf_range(-0.5, 0.5) * shake if shake > 0 else 0.0
 	var wt := Transform2D(0.0, Vector2(zoom, zoom), 0.0, Vector2(-cam.x * zoom + shk, -cam.y * zoom + shk))
+	cur_wt = wt
 	draw_set_transform_matrix(wt)
 	draw_zones()
 	draw_tiles(vw, vh)
@@ -3804,6 +3909,8 @@ func _draw_inner() -> void:
 				draw_cfg("MATCH SETTINGS", MATCH_ROWS)
 			"ctrl_cfg":
 				draw_cfg("CONTROLS", CONTROL_ROWS)
+			"credits":
+				draw_credits()
 			"lan":
 				draw_lan()
 			"lan_join":
@@ -3843,6 +3950,7 @@ func _draw_inner() -> void:
 		draw_player(p, wt)
 	_pm("players")
 	draw_set_transform_matrix(wt)
+	draw_clouds()
 	draw_landing_marker()
 	draw_set_transform_matrix(wt)
 	for b in bullets:
@@ -3877,9 +3985,11 @@ func _draw_inner() -> void:
 		if g.kind == "bomb":
 			draw_set_transform_matrix(wt)
 			draw_texture_rect(tex.timebomb, Rect2(g.x - 8, g.y - 6, 16, 12), false)
-			if sin(time_s * (6.0 + (4.5 - g.fuse) * 3.0)) > 0:
-				draw_circle(Vector2(g.x + 4, g.y - 5), 2.0, C_RED)
-			txt(str(ceili(g.fuse)), Vector2(g.x, g.y - 10), 11, C_RED, 1, 3)
+			var armed: bool = g.stuck and g.fuse > MINE_ARM
+			if sin(time_s * (9.0 if armed else 3.0)) > 0.2:
+				draw_circle(Vector2(g.x + 4, g.y - 5), 2.2, C_RED if armed else C_ARC)
+			if armed:
+				draw_arc(Vector2(g.x, g.y), MINE_R, 0, TAU, 28, Color(1, 0.25, 0.25, 0.18 + 0.08 * sin(time_s * 4.0)), 1.5, true)
 			continue
 		draw_set_transform_matrix(wt * Transform2D(g.rot, Vector2.ONE, 0.0, Vector2(g.x, g.y)))
 		draw_texture_rect(tex.grenade, Rect2(-6, -7, 12, 14), false)
@@ -4087,13 +4197,16 @@ func draw_player(p: Player, wt: Transform2D) -> void:
 		body = base * Transform2D(PI / 2, Vector2.ONE, 0.0, Vector2(-4, 1))
 		gun_rot = la - PI / 2
 	else:
-		body = base * Transform2D(0.0, Vector2.ONE, 0.0, Vector2(0, (1.0 if crouch else 0.0) + bob))
-	gun_rot += 0.5 * p.reload_k
-	if p.switch_t > 0:
-		gun_rot += 1.1 * sin(PI * clampf(p.switch_t / 0.22, 0, 1))
+		var lean := p.hand_k * 0.3 * clampf(p.vx / 120.0, -1.0, 1.0) * face
+		body = base * Transform2D(lean, Vector2.ONE, 0.0, Vector2(0, (1.0 if crouch else 0.0) + bob))
 	var mk := clampf(1.0 - p.melee_anim / 0.28, 0, 1) if p.melee_anim > 0 else -1.0
-	if mk >= 0:
+	var busy := "melee" if mk >= 0 else ("swap" if p.switch_t > 0 else ("reload" if p.reload_k > 0.01 else ""))
+	if busy == "melee":
 		gun_rot += 0.7 * sin(mk * PI)
+	elif busy == "swap":
+		gun_rot += 1.1 * sin(PI * clampf(p.switch_t / 0.22, 0, 1))
+	elif busy == "reload":
+		gun_rot += 0.5 * p.reload_k
 	draw_set_transform_matrix(body)
 	var lk := plook(p)
 	av_back(lk, tint)
@@ -4118,11 +4231,19 @@ func draw_player(p: Player, wt: Transform2D) -> void:
 	var dual: bool = w != null and w.get("dual", false)
 	var grip2 := sh_pt + Vector2(-3, 3) + dir * (7.0 - p.recoil * 0.5)
 	var back_tgt := grip2 if dual else grip
-	if p.protect_t > 0:
-		tint.a = 0.45 + 0.4 * absf(sin(time_s * 10.0))
+	var swim := p.hand_k > 0.3
+	var sw_ph := time_s * 13.0 + p.id
+	if swim:
+		# arms paddle through the air, one forward while the other goes back
+		var a1 := 0.5 + sin(sw_ph) * 1.6
+		back_tgt = sh_pt + Vector2(-2, 0) + Vector2(cos(a1), sin(a1)) * 15.0
+	if p.protect_t > 0 and bage >= 0.6:
+		tint.a = 0.8 + 0.2 * sin(time_s * 6.0)
 	draw_line(sh_pt + Vector2(-2, 0), back_tgt, C_OUT, 6.0, true)
 	draw_line(sh_pt + Vector2(-2, 0), back_tgt, sleeve * tint, 4.0, true)
-	if dual:
+	if swim:
+		draw_texture_rect(tex.hand, Rect2(back_tgt - Vector2(3, 3), Vector2(6, 6)), false)
+	if dual and not swim:
 		draw_set_transform_matrix(body * Transform2D(gun_rot, Vector2.ONE, 0.0, grip2))
 		var gsz2 := Vector2(m.size[0], m.size[1]) * gd
 		draw_texture_rect(tex["gun_" + gun], Rect2(-m.grip[0] * gd, -m.grip[1] * gd, gsz2.x, gsz2.y), false, Color(0.8, 0.8, 0.8) * tint)
@@ -4135,13 +4256,14 @@ func draw_player(p: Player, wt: Transform2D) -> void:
 	av_head(lk, p.color, tint)
 	draw_set_transform_matrix(body * Transform2D(gun_rot, Vector2.ONE, 0.0, grip))
 	var gsz := Vector2(m.size[0], m.size[1]) * gd
-	draw_texture_rect(tex["gun_" + gun], Rect2(-m.grip[0] * gd, -m.grip[1] * gd, gsz.x, gsz.y), false, tint)
-	if gun == "minigun" and p.spin > 0.05:
+	if not swim:
+		draw_texture_rect(tex["gun_" + gun], Rect2(-m.grip[0] * gd, -m.grip[1] * gd, gsz.x, gsz.y), false, tint)
+	if gun == "minigun" and p.spin > 0.05 and not swim:
 		for bi in 5:
 			var by: float = (4.6 + 1.9 * bi - m.grip[1]) * gd
 			var fl: float = 0.5 + 0.5 * sin(time_s * 70.0 * p.spin + bi * 1.3)
 			draw_line(Vector2((25.0 - m.grip[0]) * gd, by), Vector2((45.0 - m.grip[0]) * gd, by), Color(0.85, 0.88, 0.95, 0.55 * fl * p.spin), 1.2)
-	if p.muzzle_t > 0 and gun != "rpg" and not ["laser", "shock", "net", "flame"].has(gun):
+	if p.muzzle_t > 0 and busy == "" and gun != "rpg" and not ["laser", "shock", "net", "flame"].has(gun):
 		var mz := Vector2(m.muzzle[0] - m.grip[0], m.muzzle[1] - m.grip[1]) * gd
 		var fw := 24.0 * (1.3 if gun == "shotgun" else 1.0)
 		draw_texture_rect(tex.flash, Rect2(mz.x - 1, mz.y - 7, fw, 14), false)
@@ -4155,17 +4277,21 @@ func draw_player(p: Player, wt: Transform2D) -> void:
 		var e := mk * mk * (3.0 - 2.0 * mk)
 		ka = lerpf(-1.7, 0.9, e)
 		fh = sh_pt + Vector2(cos(ka), sin(ka)) * 12.0
+	if swim:
+		var a2 := 0.5 - sin(sw_ph) * 1.6
+		fh = sh_pt + Vector2(3, 0) + Vector2(cos(a2), sin(a2)) * 15.0
 	draw_line(sh_pt + Vector2(3, 0), fh, C_OUT, 6.0, true)
 	draw_line(sh_pt + Vector2(3, 0), fh, sleeve_col(p.color, lk) * tint, 4.0, true)
 	draw_texture_rect(tex.hand, Rect2(fh - Vector2(3, 3), Vector2(6, 6)), false)
-	draw_texture_rect(tex.hand, Rect2(grip - Vector2(3, 3), Vector2(6, 6)), false)
+	if not swim:
+		draw_texture_rect(tex.hand, Rect2(grip - Vector2(3, 3), Vector2(6, 6)), false)
 	if mk >= 0:
 		draw_arc(sh_pt, 24, -1.7, ka, 14, Color(1, 1, 1, 0.55 * (1.0 - mk) + 0.15), 4, true)
 		draw_set_transform_matrix(body * Transform2D(ka, Vector2.ONE, 0.0, fh))
 		draw_texture_rect(tex.knife, Rect2(-3, -3, 18, 6), false)
 		draw_set_transform_matrix(body)
 	av_front(lk, tint)
-	if p.protect_t > 0:
+	if p.protect_t > 0 and (bage >= 0.45 or bage < 0.0 or p.actor):
 		draw_arc(Vector2(0, -4), 30, 0, TAU, 40, Color(0.5, 0.9, 1.0, 0.25), 2.0, true)
 		draw_arc(Vector2(0, -4), 30, -PI / 2, -PI / 2 + TAU * clampf(p.protect_t / S.protect, 0.0, 1.0), 40, Color(0.6, 0.95, 1.0, 0.9), 3.0, true)
 		var sa: float = S.protect - p.protect_t
@@ -4533,8 +4659,25 @@ func draw_touch() -> void:
 				tex_c("timebomb", b.p + Vector2(0, -3 * u), Vector2(20, 15) * u)
 				txt("%d" % me.bombs, b.p + Vector2(b.r * 0.55, b.r * 0.7), 11 * u, C_INK, 1, 3 * u)
 			"GRENADE":
-				tex_c("grenade", b.p + Vector2(0, -3 * u), Vector2(16, 19) * u)
-				txt("%d" % me.grenades, b.p + Vector2(b.r * 0.55, b.r * 0.7), 11 * u, C_INK, 1, 3 * u)
+				var kk := pick_kind(me, my_tk)
+				tex_c(THROW_TEX[kk][0], b.p + Vector2(0, -3 * u), THROW_TEX[kk][1] * u)
+				txt("%d" % kind_count(me, kk), b.p + Vector2(b.r * 0.55, b.r * 0.7), 11 * u, C_INK, 1, 3 * u)
+			"TK0", "TK1", "TK2":
+				var kk2 := int(b.n.substr(2))
+				var on: bool = pick_kind(me, my_tk) == kk2
+				var cnt := kind_count(me, kk2)
+				if on:
+					draw_arc(b.p, b.r + 2 * u, 0, TAU, 32, C_ARC, 2.5 * u, true)
+				var tcol := Color(1, 1, 1, 1.0 if cnt > 0 else 0.3)
+				tex_c(THROW_TEX[kk2][0], b.p + Vector2(0, -1 * u), THROW_TEX[kk2][1] * u * 0.7, tcol)
+				txt("%d" % cnt, b.p + Vector2(b.r * 0.7, b.r * 0.75), 9 * u, C_INK if cnt > 0 else C_MUTED, 1, 2 * u)
+			"HAND":
+				var sw2 := sin(time_s * 10.0) * 0.5 if btn_held.has("HAND") else 0.0
+				for hs in [-1.0, 1.0]:
+					var ang: float = -PI / 2 + hs * (0.55 + sw2 * hs)
+					draw_line(b.p + Vector2(0, 4 * u), b.p + Vector2(0, 4 * u) + Vector2(cos(ang), sin(ang)) * 11 * u, C_INK, 3 * u, true)
+					draw_circle(b.p + Vector2(0, 4 * u) + Vector2(cos(ang), sin(ang)) * 12 * u, 3 * u, C_INK)
+				txt("HAND", b.p + Vector2(0, b.r * 0.75), 8 * u, C_INK, 1, 2 * u)
 			"SWAP":
 				var o = me.slots[1 - me.cur]
 				if o != null:
@@ -4606,7 +4749,7 @@ func draw_menu() -> void:
 	var x := r.position.x + 26 * u
 	var y := r.position.y
 	txt("ARC LIGHT STUDIO  /  BUILD " + VERSION, Vector2(x, y + 30 * u), 11 * u, C_CYAN)
-	txt("Sounds: Kenney.nl (CC0) and the Freedoom project (BSD licence)", Vector2(r.end.x - 20 * u, r.end.y - 12 * u), 8 * u, Color(C_MUTED, 0.7), 2)
+	ui_button("CREDITS", Rect2(r.end.x - 112 * u, r.end.y - 48 * u, 92 * u, 34 * u), "credits")
 	var title := "SKY SQUAD"
 	var fs := 50 * u
 	var xx := x
@@ -4644,7 +4787,7 @@ func draw_menu() -> void:
 		"Left thumb: move, push up to fly.",
 		"Right thumb: aim" + (", push far to shoot." if cfg.fire_mode == "auto" else ", tap FIRE to shoot."),
 		"Walk near a gun and tap its bubble to take it.",
-		"Keyboard: A/D W S, mouse, E Q Z G B C F.",
+		"Keys: A/D W S, mouse, G throw, 1-3 pick, Shift hand.",
 	]
 	for i in lines.size():
 		var head: bool = lines[i] == "THIS MATCH" or lines[i] == "HOW TO PLAY"
@@ -4789,7 +4932,7 @@ func toast(msg: String) -> void:
 	toast_t = 4.0
 
 func blank_inp() -> Dictionary:
-	return {"mx": 0.0, "fly": false, "shoot": false, "swap": false, "grenade": false, "melee": false, "reload": false, "aim": 0.0, "down": false, "pick": "", "zoom": false, "bomb": false, "smoke": false}
+	return {"mx": 0.0, "fly": false, "shoot": false, "swap": false, "grenade": false, "melee": false, "reload": false, "aim": 0.0, "down": false, "pick": "", "zoom": false, "bomb": false, "smoke": false, "tk": 0, "hand": false}
 
 func lan_ips() -> Array:
 	var out := []
@@ -5101,7 +5244,7 @@ func build_snap() -> Dictionary:
 	var pf := PackedFloat32Array()
 	var ps := PackedStringArray()
 	for p in players:
-		var fl := (1 if p.alive else 0) | (2 if p.jet_on else 0) | (4 if p.on_ground else 0) | (8 if p.in_water else 0)
+		var fl := (1 if p.alive else 0) | (2 if p.jet_on else 0) | (4 if p.on_ground else 0) | (8 if p.in_water else 0) | (16 if p.hand_on else 0)
 		var lh := players.find(p.last_hit_by) if p.last_hit_by != null else -1
 		pf.append_array([p.x, p.y, p.vx, p.vy, p.aim, p.hp, p.fuel, fl, p.cur, p.grenades, p.bombs,
 			maxf(p.stun_t, 0.0), maxf(p.net_t, 0.0), maxf(p.protect_t, 0.0), maxf(p.reload_t, 0.0), p.reload_total,
@@ -5243,6 +5386,7 @@ func apply_snap(d) -> void:
 		if not mine:
 			p.jet_on = (fl & 2) != 0
 			p.on_ground = (fl & 4) != 0
+			p.hand_on = (fl & 16) != 0
 		p.in_water = (fl & 8) != 0
 		p.cur = int(pf[o + 8])
 		p.grenades = int(pf[o + 9])
@@ -5466,6 +5610,8 @@ func c_input(a) -> void:
 					p.press_hold[kk] = true
 			if a.size() > 13:
 				p.ack = maxi(p.ack, int(a[13]))
+			inp.tk = clampi(int(a[14]), 0, 2) if a.size() > 14 else 0
+			inp.hand = a.size() > 15 and bool(a[15])
 			inputs_got += 1
 			return
 
@@ -5512,7 +5658,7 @@ func update_client(dt: float) -> void:
 			i2[kk] = true
 		in_latch.clear()
 		in_seq += 1
-		var pkt := [i2.mx, i2.fly, i2.shoot, i2.swap, i2.grenade, i2.melee, i2.reload, me.aim, i2.down, i2.pick, i2.zoom, i2.bomb, i2.smoke, in_seq]
+		var pkt := [i2.mx, i2.fly, i2.shoot, i2.swap, i2.grenade, i2.melee, i2.reload, me.aim, i2.down, i2.pick, i2.zoom, i2.bomb, i2.smoke, in_seq, int(i2.get("tk", 0)), bool(i2.get("hand", false))]
 		if lag_ms > 0:
 			lag_out.append([time_s + lag_ms / 2000.0, pkt])
 		else:
@@ -5586,7 +5732,10 @@ func update_client(dt: float) -> void:
 		if b.rocket and randf() < 0.5:
 			add_part(b.x, b.y, randf_range(-20, 20), randf_range(-20, 20), 0.7, Color(0.8, 0.8, 0.8, 0.5), 6, -0.03, "smoke", 18)
 	for g in grenades_list:
-		g.fuse -= dt
+		if g.kind != "bomb":
+			g.fuse -= dt
+		elif g.stuck:
+			g.fuse += dt
 		if not g.stuck:
 			g.x += g.vx * dt
 			g.y += g.vy * dt
@@ -6250,7 +6399,7 @@ func death_line(me: Player) -> Array:
 		if WD.has(me.last_gun):
 			how = WD[me.last_gun].name
 		else:
-			how = {"grenade": "GRENADE", "rpg": "ROCKET", "bomb": "TIME BOMB", "melee": "KNIFE", "shock": "SHOCK", "smoke": "SMOKE GAS"}.get(me.last_gun, "")
+			how = {"grenade": "GRENADE", "rpg": "ROCKET", "bomb": "MINE", "melee": "KNIFE", "shock": "SHOCK", "smoke": "SMOKE GAS"}.get(me.last_gun, "")
 		if me.last_head and me.last_cause == "shot":
 			how += "  /  HEADSHOT"
 		return [k.pname, k.color, how]
@@ -6846,13 +6995,13 @@ func lag_tick() -> void:
 # a given input; we start from there and replay the moves the server has not seen yet.
 func predict_me(p: Player, dt: float) -> void:
 	var inp: Dictionary = p.inp
-	predict_step(p, float(inp.mx), bool(inp.fly), dt)
-	pred_hist.append([in_seq, float(inp.mx), bool(inp.fly), dt])
+	predict_step(p, float(inp.mx), bool(inp.fly), dt, bool(inp.get("hand", false)))
+	pred_hist.append([in_seq, float(inp.mx), bool(inp.fly), dt, bool(inp.get("hand", false))])
 	if pred_hist.size() > 180:
 		pred_hist.pop_front()
 	pred_off *= exp(-10.0 * dt)
 
-func predict_step(p: Player, mx: float, fly_in: bool, dt: float) -> void:
+func predict_step(p: Player, mx: float, fly_in: bool, dt: float, hand := false) -> void:
 	var c := center(p)
 	var z = zone_at(c.x, c.y)
 	var gm: float = z.g if z != null else 1.0
@@ -6867,6 +7016,10 @@ func predict_step(p: Player, mx: float, fly_in: bool, dt: float) -> void:
 		post_mul *= 0.72
 	var target: float = mx * S.move_speed * (0.55 if p.in_water else 1.0) * post_mul
 	var acc := 2600.0 if p.on_ground else 1500.0
+	p.hand_on = hand_ok(p, hand)
+	if p.hand_on:
+		target *= HAND_SPEED
+		acc *= 1.3
 	if target != 0.0 and signf(target) != signf(p.vx):
 		acc *= 1.5
 	if p.vx < target:
@@ -6910,7 +7063,7 @@ func reconcile_me(p: Player, ack: int, fl: int) -> void:
 	while not pred_hist.is_empty() and int(pred_hist[0][0]) <= ack:
 		pred_hist.pop_front()
 	for h in pred_hist:
-		predict_step(p, h[1], h[2], h[3])
+		predict_step(p, h[1], h[2], h[3], h[4] if h.size() > 4 else false)
 	var err := Vector2(p.x, p.y) - old
 	var el := err.length()
 	pred_err += el
@@ -7340,3 +7493,161 @@ func zoom_log(me: Player, pc: Vector2, vw: float, vh: float) -> void:
 	if zt_n % 300 == 0:
 		print("ZOOMTEST zoom_level=%d view_h=%.0f gun=%s" % [zoom_level(me), view_h, str(me.slots[me.cur].type if me.slots[me.cur] != null else "none")])
 		print("ZOOMTEST frames=%d fast_camera_frames=%d (cam moving >1.5 screens/sec) max=%.1f screens/sec  near_edge_frames=%d closest_to_edge=%.2f" % [zt_n, zt_jumps, zt_max, zt_out, zt_edge])
+
+# you can only take an item you can actually reach: not inside a wall and not behind one
+func reach_ok(c: Vector2, k: Pickup) -> bool:
+	if rect_hits(k.x + 3, k.y + 3, k.w - 6, k.h - 6):
+		return false
+	return los(c, Vector2(k.x + k.w / 2.0, k.y + k.h / 2.0))
+
+# ================= MINE + SMOKE (v1.7) =================
+const MINE_ARM := 0.8
+const MINE_LIFE := 90.0
+const MINE_R := 46.0
+const SMOKE_T := 12.0
+const SMOKE_R := 175.0
+
+func plant_mine(g: Grenade) -> void:
+	g.fuse = 0.0
+	g.vx = 0.0
+	g.vy = 0.0
+	play("arm", Vector2(g.x, g.y), -2.0, 0.0)
+	st_mines += 1
+	# each soldier keeps at most 2 mines; the oldest one goes away
+	var mine := []
+	for o in grenades_list:
+		if o.kind == "bomb" and o.stuck and o.owner == g.owner and o != g:
+			mine.append(o)
+	while mine.size() >= 2:
+		grenades_list.erase(mine.pop_front())
+
+func mine_target(g: Grenade) -> bool:
+	for p in players:
+		if not p.alive or p == g.owner:
+			continue
+		if g.owner != null and not enemy(p, g.owner):
+			continue
+		if center(p).distance_to(Vector2(g.x, g.y)) < MINE_R:
+			return true
+	return false
+
+func cloud_k(cl: Dictionary) -> float:
+	var age: float = SMOKE_T - float(cl.t)
+	return clampf(age / 0.8, 0.0, 1.0) * clampf(float(cl.t) / 1.8, 0.0, 1.0)
+
+func in_cloud(cl: Dictionary, pt: Vector2) -> bool:
+	var r: float = SMOKE_R * (0.45 + 0.55 * clampf((SMOKE_T - float(cl.t)) / 0.8, 0.0, 1.0))
+	var d := pt - Vector2(cl.x, cl.y)
+	return Vector2(d.x, d.y * 1.4).length() < r * 0.85
+
+func smoke_blocks(a: Vector2, b: Vector2) -> bool:
+	for cl in clouds:
+		if cloud_k(cl) < 0.5:
+			continue
+		var c := Vector2(cl.x, cl.y)
+		var ab := b - a
+		var k := clampf((c - a).dot(ab) / maxf(1.0, ab.length_squared()), 0.0, 1.0)
+		if in_cloud(cl, a + ab * k):
+			return true
+	return false
+
+# big soft puffs that grow out, roll slowly and fade at the end
+func draw_clouds() -> void:
+	for ci in clouds.size():
+		var cl: Dictionary = clouds[ci]
+		var k := cloud_k(cl)
+		if k <= 0.0:
+			continue
+		var grow: float = 0.45 + 0.55 * clampf((SMOKE_T - float(cl.t)) / 0.8, 0.0, 1.0)
+		var seed := float(int(cl.x * 7.0 + cl.y * 3.0) % 97)
+		for j in 24:
+			var a := j * 2.39996 + seed
+			var rr: float = SMOKE_R * grow * (0.15 + 0.75 * fmod(j * 0.618, 1.0))
+			var px: float = cl.x + cos(a + time_s * 0.05) * rr + sin(time_s * 0.4 + j) * 8.0
+			var py: float = cl.y + sin(a + time_s * 0.05) * rr * 0.62 + cos(time_s * 0.35 + j * 1.7) * 6.0
+			var sz: float = (110.0 + 40.0 * fmod(j * 0.37, 1.0)) * grow
+			var shade := 0.58 + 0.16 * fmod(j * 0.53, 1.0)
+			draw_set_transform_matrix(cur_wt * Transform2D(time_s * 0.08 * (1.0 if j % 2 == 0 else -1.0) + j, Vector2.ONE, 0.0, Vector2(px, py)))
+			draw_texture_rect(tex.smoke, Rect2(-sz / 2, -sz / 2, sz, sz), false, Color(shade, shade + 0.06, shade - 0.02, 0.95 * k))
+	draw_set_transform_matrix(cur_wt)
+var cur_wt := Transform2D.IDENTITY
+
+# ================= THROW + HAND (v1.7) =================
+const HAND_SPEED := 1.45
+const THROW_TEX := [["grenade", Vector2(16, 19)], ["timebomb", Vector2(20, 15)], ["smoke_can", Vector2(13, 17)]]
+var my_tk := 0
+
+func kind_count(p: Player, k: int) -> int:
+	return [p.grenades, p.bombs, p.smokes][clampi(k, 0, 2)]
+
+# the kind you picked, or the next one you still have
+func pick_kind(p: Player, want: int) -> int:
+	want = clampi(want, 0, 2)
+	for i in 3:
+		var k := (want + i) % 3
+		if kind_count(p, k) > 0:
+			return k
+	return want
+
+func hand_ok(p: Player, want: bool) -> bool:
+	return want and not p.on_ground and not p.in_water and p.posture == "stand" and p.net_t <= 0 and p.stun_t <= 0
+
+# ================= MUSIC + CREDITS (v1.7) =================
+var music_player: AudioStreamPlayer
+var music_vol := -80.0
+
+# the theme plays on the menus and lobby, and fades away once a match starts
+func music_tick(delta: float) -> void:
+	if music_player == null or music_player.stream == null or dedicated or autotest:
+		return
+	var want := -9.0 if (bool(cfg.get("music", true)) and cfg.sound and MENU_STATES.has(state)) else -80.0
+	music_vol = move_toward(music_vol, want, delta * (40.0 if want > music_vol else 30.0))
+	music_player.volume_db = music_vol
+	if music_vol > -79.0 and not music_player.playing:
+		music_player.play()
+	elif music_vol <= -79.5 and music_player.playing:
+		music_player.stop()
+
+const CREDITS := [
+	["GAME", ""],
+	["Sky Squad", "Arc Light Studio"],
+	["Design and testing", "Arc Light Studio and friends"],
+	["Code, art and music", "Made with Claude (Anthropic)"],
+	["MUSIC", ""],
+	["Sky Squad Theme", "Original music made for this game"],
+	["SOUNDS", ""],
+	["Sound effects", "Kenney.nl (CC0)"],
+	["More sound effects", "The Freedoom project (BSD licence)"],
+	["ENGINE", ""],
+	["Godot Engine 4.3", "godotengine.org (MIT licence)"],
+	["", ""],
+	["Thanks for playing!", ""],
+]
+
+func draw_credits() -> void:
+	var w := minf(sw - 32 * u, 560 * u)
+	var h := minf(sh - 24 * u, 340 * u)
+	var r := panel(w, h)
+	var x := r.position.x + 28 * u
+	var y := r.position.y + 44 * u
+	txh("CREDITS", Vector2(x, y), 26 * u, C_ARC, 0, 5 * u)
+	y += 30 * u
+	for i in CREDITS.size():
+		var row: Array = CREDITS[i]
+		var k2 := ease_out((ui_t - 0.1 - i * 0.03) / 0.3)
+		var ga1 := ga
+		ga *= k2
+		if row[1] == "" and row[0] != "" and row[0] == row[0].to_upper():
+			y += 6 * u
+			txt(row[0], Vector2(x, y), 10 * u, C_CYAN)
+		else:
+			txt(row[0], Vector2(x, y), 12 * u, C_INK)
+			txt(row[1], Vector2(r.end.x - 28 * u, y), 12 * u, C_MUTED, 2)
+		ga = ga1
+		y += 18 * u
+	ui_button("BACK", Rect2(r.end.x - 132 * u, r.end.y - 54 * u, 108 * u, 38 * u), "back")
+var st_mines := 0
+var st_mine_boom := 0
+var st_smokes := 0
+var st_hand := 0.0
+var st_picks := 0
