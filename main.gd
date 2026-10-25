@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.7
+# Sky Squad - Arc Light Studio. Playtest build 1.8
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.7"
+const VERSION := "1.8"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -387,7 +387,7 @@ var cfg := {
 	"ev_water": true, "ev_roof": true, "ev_brk": true, "ev_flip": false, "zones": false, "map": "sky",
 	"fire_mode": "auto", "sticks": "floating", "stick_size": 1.0, "btn_size": 1.0, "opacity": 0.7,
 	"left_handed": false, "aim_sens": "medium", "vibration": true, "sound": true,
-	"name": "", "show_fps": false, "music": true, "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
+	"name": "", "show_fps": false, "music": true, "shake": "low", "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
 }
 const MATCH_ROWS := [
 	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
@@ -426,6 +426,7 @@ const CONTROL_ROWS := [
 	["aim_sens", "Aim sensitivity", ["low", "medium", "high"], ["Low", "Medium", "High"]],
 	["vibration", "Vibration", [true, false], ["On", "Off"]],
 	["sound", "Sound", [true, false], ["On", "Off"]],
+	["shake", "Screen shake", ["low", "full", "off"], ["Low", "Full", "Off"]],
 	["music", "Menu music", [true, false], ["On", "Off"]],
 	["show_fps", "Show FPS", [false, true], ["Off", "On"]],
 ]
@@ -594,8 +595,7 @@ func _ready() -> void:
 	font = ThemeDB.fallback_font
 	load_fonts()
 	DisplayServer.screen_set_keep_on(true)
-	if OS.has_feature("mobile"):
-		Engine.max_fps = 60
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
 	for n in ["dirt0", "dirt1", "dirt2", "grass", "rock", "wood", "crate", "crack1", "crack2", "bg_mountains", "bg_hills", "bg_near",
 			"sand0", "sand1", "sand2", "sandcap", "concrete", "bg_out_far", "bg_out_mid", "bg_out_near",
 			"cave0", "cave1", "cave2", "moss", "brick", "torch", "bg_cat_far", "bg_cat_mid",
@@ -812,6 +812,41 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--screen="):
 			state = a.substr(9)
+		if a == "--minetest2":
+			# throw a real mine from the hand, let it land and stick, then walk an enemy up to it
+			cfg.bots = 1
+			reset_match()
+			state = "play"
+			var me1: Player = players[my_idx]
+			var foe1: Player = players[1]
+			foe1.bot = false
+			foe1.x = me1.x + 2000
+			me1.bot = false
+			for i in 90:
+				update_game(1.0 / 60.0)
+			me1.bombs = 2
+			my_tk = 1
+			mt_throw = 2
+			update_game(1.0 / 60.0)
+			update_game(1.0 / 60.0)
+			var mn = null
+			for g in grenades_list:
+				if g.kind == "bomb":
+					mn = g
+			print("MINETEST2 thrown: ", mn != null)
+			for i in 240:
+				update_game(1.0 / 60.0)
+			print("MINETEST2 after 4 s: still there=", grenades_list.has(mn), " stuck=", mn.stuck if mn != null else false, " explosions=", explosions)
+			if mn != null:
+				foe1.protect_t = 0.0
+				foe1.x = mn.x - foe1.w / 2.0
+				foe1.y = mn.y - foe1.h / 2.0
+				foe1.vx = 0
+				foe1.vy = 0
+				for i in 10:
+					update_game(1.0 / 60.0)
+				print("MINETEST2 enemy next to it: exploded=", not grenades_list.has(mn), " foe alive=", foe1.alive, " hp=", foe1.hp)
+			get_tree().quit()
 		if a == "--minetest":
 			reset_match()
 			var me0: Player = players[my_idx]
@@ -859,6 +894,7 @@ func play(name: String, pos = null, vol := 0.0, pitch_var := 0.08) -> void:
 func play_l(name: String, pos = null, vol := 0.0, pitch_var := 0.08) -> void:
 	if autotest or shot_at >= 0:
 		return
+	snd_n += 1
 	var db := vol
 	if pos != null:
 		var center_w := cam + Vector2(sw, sh) / zoom / 2.0
@@ -1689,9 +1725,6 @@ func fire(p: Player, w: Dictionary) -> void:
 			b.ff = p.lat if p.remote else 0.0
 			bullets.append(b)
 	restore_others(rw)
-	if d.push > 0 and p.posture == "stand":
-		p.vx -= cos(p.aim) * d.push
-		p.vy -= sin(p.aim) * d.push * 0.5
 	fire_fx(p, w.type, mz)
 	if net_role == "host":
 		net_fx.append(["f", players.find(p), w.type, mz])
@@ -1717,7 +1750,7 @@ func fire_fx(p: Player, wt: String, mz: Vector2) -> void:
 	else:
 		play_l(d.snd, mz, (-1.0 if wt == "ak47" else (-6.0 if wt == "minigun" else -4.0)) if is_me(p) else -7.0)
 	if is_me(p):
-		shake = maxf(shake, d.recoil * (0.9 if wt == "ak47" else 0.5))
+		kick -= Vector2(cos(p.aim), sin(p.aim)) * minf(d.recoil * 0.5, 3.0)
 
 func hitscan(p: Player, from: Vector2, a: float, dmg: float, chip: float) -> void:
 	var dir := Vector2(cos(a), sin(a))
@@ -1821,7 +1854,10 @@ func explode(x: float, y: float, r: float, dmg: float, owner, gun: String) -> vo
 	explode_hits(x, y, r, dmg, owner, gun)
 
 func explode_fx(x: float, y: float, r: float, es := "explosion") -> void:
-	shake = maxf(shake, 14.0)
+	# shake only when the blast is near you, and less the further away it is
+	var view_c := cam + Vector2(sw, sh) / zoom / 2.0
+	var near := clampf(1.0 - Vector2(x, y).distance_to(view_c) / 650.0, 0.0, 1.0)
+	shake = maxf(shake, 12.0 * near * near)
 	play_l(es, Vector2(x, y), 0.0)
 	add_part(x, y, 0, 0, 0.45, Color.WHITE, r * 0.6, 0.0, "fireball", r * 2.2)
 	for i in 10:
@@ -2949,16 +2985,14 @@ func update_grenades(dt: float) -> void:
 			g.y = ny
 		if g.kind != "bomb":
 			g.fuse -= dt
-		if g.fuse <= 0 or (g.kind == "bomb" and (g.y > WH or g.y < 0)):
+		if (g.kind != "bomb" and g.fuse <= 0) or (g.kind == "bomb" and (g.y > WH or g.y < 0)):
 			if g.kind == "smoke":
 				clouds.append({"x": g.x, "y": g.y, "t": SMOKE_T, "owner": g.owner})
 				st_smokes += 1
 				play("hiss", Vector2(g.x, g.y), -1.0)
 				grenades_list.remove_at(i)
 				continue
-			if g.kind == "bomb":
-				explode(g.x, g.y, 120.0, 115.0, g.owner, "bomb")
-			else:
+			if g.kind != "bomb":
 				explode(g.x, g.y, S.grenade_radius, S.grenade_dmg, g.owner, "grenade")
 			grenades_list.remove_at(i)
 
@@ -3081,7 +3115,10 @@ func buttons() -> Array:
 		var ap := def_aim()
 		out.append({"n": "FIRE", "p": Vector2(ap.x, ap.y - stick_rad() - r * 1.9), "r": r * 1.35})
 	out.append({"n": "SIT", "p": Vector2(mirror_x(safe_l + r + 14 * u), sh * 0.42), "r": r * 0.85})
-	out.append({"n": "HAND", "p": Vector2(mirror_x(safe_l + r + 14 * u), sh * 0.26), "r": r * 0.85})
+	# HAND sits right beside the aim stick, on the side towards the middle of the screen
+	var av := def_aim()
+	var side := -1.0 if not cfg.left_handed else 1.0
+	out.append({"n": "HAND", "p": Vector2(av.x + side * (stick_rad() + r * 1.3), av.y), "r": r * 0.85})
 	return out
 
 func _notification(what: int) -> void:
@@ -3613,7 +3650,13 @@ func _process(delta: float) -> void:
 	var _p0 := Time.get_ticks_usec()
 	_process_inner(delta)
 	if prof_on:
-		prof_proc.append(Time.get_ticks_usec() - _p0)
+		var pu := Time.get_ticks_usec() - _p0
+		if pu > 5000 or delta > 0.03:
+			print("SPIKE process=%dus frame=%dms parts=%d bullets=%d clouds=%d sounds=%d expl=%d psec=%s" % [pu, int(delta * 1000), parts.size(), bullets.size(), clouds.size(), snd_n, explosions - expl_last, str(psec_f)])
+		snd_n = 0
+		expl_last = explosions
+		psec_f.clear()
+		prof_proc.append(pu)
 		prof_frame.append(delta * 1e6)
 		if prof_proc.size() >= 300:
 			var a := prof_proc.duplicate(); a.sort()
@@ -3730,8 +3773,16 @@ func update_game(dt: float) -> void:
 		human_input()
 		if zoom_test:
 			zoom_script(dt)
+		if mt_throw > 0:
+			var mt: Player = players[my_idx]
+			mt.inp.grenade = mt_throw == 1
+			mt.inp.tk = 1
+			mt.inp.aim = 0.6
+			mt.aim = 0.6
+			mt_throw -= 1
 	pick_request = ""
 	zoom_request = false
+	_pp_t = Time.get_ticks_usec()
 	for p in players:
 		if p.bot:
 			bot_think(p, dt)
@@ -3742,20 +3793,27 @@ func update_game(dt: float) -> void:
 			for kk in p.press_hold.keys():
 				p.inp[kk] = true
 			p.press_hold.clear()
+	_pp("bots")
 	for p in players:
 		update_player(p, dt)
+	_pp("players")
 	if net_role == "host":
 		for p in players:
 			p.hist.append(Vector3(t, p.x, p.y))
 			while p.hist.size() > 2 and p.hist[0].x < t - 0.4:
 				p.hist.pop_front()
 	update_bullets(dt)
+	_pp("bullets")
 	update_grenades(dt)
 	update_clouds(dt)
 	update_blocks(dt)
+	_pp("gren_clouds_blocks")
 	update_pickups(dt)
+	_pp("pickups")
 	update_parts(dt)
+	_pp("parts")
 	update_events(dt)
+	_pp("events")
 	for f in feed:
 		f.t -= dt
 	feed = feed.filter(func(f): return f.t > 0)
@@ -3763,6 +3821,7 @@ func update_game(dt: float) -> void:
 		tr.t -= dt
 	tracers = tracers.filter(func(tr): return tr.t > 0)
 	shake = maxf(0.0, shake - dt * 30)
+	kick *= exp(-14.0 * dt)
 	big_t -= dt
 	hurt_t -= dt
 	hitmark_t -= dt
@@ -3830,20 +3889,26 @@ func _draw() -> void:
 		return
 	var _d0 := Time.get_ticks_usec()
 	_pm_t = _d0
+	dsec_f.clear()
 	_draw_inner()
 	_pm("rest")
 	if prof_on:
-		prof_draw.append(Time.get_ticks_usec() - _d0)
+		var du := Time.get_ticks_usec() - _d0
+		if du > 5000:
+			print("SPIKE draw=%dus parts=%d bullets=%d clouds=%d sec=%s" % [du, parts.size(), bullets.size(), clouds.size(), str(dsec_f)])
+		prof_draw.append(du)
 		prof_n += 1
 		if prof_n % 300 == 0:
 			var o := ""
 			for k in prof_sec.keys():
 				o += "%s=%dus " % [k, prof_sec[k] / 300]
-			print("PROFSEC ", o)
+			print("PROFSEC ", o, " | draw_calls=%d primitives=%d items=%d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)])
 			prof_sec.clear()
 
 func _draw_inner() -> void:
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if warm_n < 6 and not dedicated:
+		warm_up()
 	panel_xf = Transform2D.IDENTITY
 	ui_btns.clear()
 	var vw := sw / zoom
@@ -3854,7 +3919,7 @@ func _draw_inner() -> void:
 		cam.y = clampf(24 * T - vh / 2, 0, WH - vh)
 	elif not players.is_empty():
 		var me: Player = players[my_idx]
-		var pc := center(me)
+		var pc := center(me) + (pred_off if net_role == "client" else Vector2.ZERO)
 		# look a little ahead where you aim; the look-ahead glides on its own, slowly, so flicking
 		# the aim never throws the screen around, and you always stay well inside the screen
 		var reach: float = 40.0 + (view_h / S.view_h - 1.0) * vw * 0.16
@@ -3890,8 +3955,10 @@ func _draw_inner() -> void:
 	_pm("pre")
 	draw_bg()
 	_pm("bg")
-	var shk := randf_range(-0.5, 0.5) * shake if shake > 0 else 0.0
-	var wt := Transform2D(0.0, Vector2(zoom, zoom), 0.0, Vector2(-cam.x * zoom + shk, -cam.y * zoom + shk))
+	var sm: float = {"low": 0.45, "full": 1.0, "off": 0.0}.get(cfg.get("shake", "low"), 0.45)
+	var shv := Vector2(sin(time_s * 37.0) + 0.5 * sin(time_s * 61.0), cos(time_s * 41.0) + 0.5 * sin(time_s * 53.0 + 1.0)) * 0.33 * shake * sm
+	shv += kick * sm
+	var wt := Transform2D(0.0, Vector2(zoom, zoom), 0.0, Vector2(-cam.x * zoom + shv.x, -cam.y * zoom + shv.y))
 	cur_wt = wt
 	draw_set_transform_matrix(wt)
 	draw_zones()
@@ -5253,7 +5320,7 @@ func build_snap() -> Dictionary:
 		ps.append("%s|%s|%s|%s|%s|%s|%d" % [p.posture, slot_str(p.slots[0]), slot_str(p.slots[1]), p.say if p.say_t > 0 else "", p.last_gun, p.last_cause, 1 if p.last_head else 0])
 	var b := PackedFloat32Array()
 	for x in bullets:
-		b.append_array([x.x, x.y, x.vx, x.vy, 1.0 if x.rocket else (2.0 if x.net else (3.0 if x.flame else 0.0)), x.life, x.max_life])
+		b.append_array([x.x, x.y, x.vx, x.vy, 1.0 if x.rocket else (2.0 if x.net else (3.0 if x.flame else 0.0)), x.life, x.max_life, float(players.find(x.owner))])
 	var g := PackedFloat32Array()
 	for x in grenades_list:
 		g.append_array([x.x, x.y, x.vx, x.vy, x.rot, x.fuse, {"bomb": 1.0, "smoke": 2.0}.get(x.kind, 0.0), 1.0 if x.stuck else 0.0])
@@ -5452,7 +5519,9 @@ func apply_snap(d) -> void:
 				last_touch_aim = p.naim
 	bullets.clear()
 	var bb: PackedFloat32Array = d.b
-	for j in range(0, bb.size(), 7):
+	for j in range(0, bb.size(), 8):
+		if int(bb[j + 7]) == my_idx and local_shots_on():
+			continue
 		var b := Bullet.new()
 		b.x = bb[j]
 		b.y = bb[j + 1]
@@ -5464,6 +5533,8 @@ func apply_snap(d) -> void:
 		b.life = bb[j + 5]
 		b.max_life = bb[j + 6]
 		bullets.append(b)
+	for lb in my_shots:
+		bullets.append(lb)
 	grenades_list.clear()
 	var gg: PackedFloat32Array = d.gr
 	for j in range(0, gg.size(), 8):
@@ -5532,7 +5603,7 @@ func apply_fx(e: Array) -> void:
 		"x":
 			explode_fx(e[1], e[2], e[3], e[4] if e.size() > 4 else "explosion")
 		"f":
-			if int(e[1]) < players.size():
+			if int(e[1]) < players.size() and not (int(e[1]) == my_idx and local_shots_on() and LOCAL_GUNS.has(str(e[2]))):
 				fire_fx(players[e[1]], e[2], e[3])
 		"t":
 			tracers.append({"a": e[1], "b": e[2], "t": e[3], "max": e[3], "kind": e[4]})
@@ -5581,6 +5652,7 @@ func s_end(info) -> void:
 		var me: Player = players[my_idx]
 		print("CLIENT snaps=%d tile_updates=%d players=%d me=%s idx=%d kills=%d deaths=%d moved=%d" % [snaps_got, tiles_got, players.size(), me.pname, my_idx, me.kills, me.deaths, int(lt_moved)])
 		print("CLIENT fx: ", fx_count)
+		print("CLIENT own shots shown at once: %d" % lf_total)
 		print("CLIENT others jitter=%.2fpx per frame" % (jit_sum / maxf(1.0, jit_n)))
 		print("CLIENT prediction: avg_error=%.1fpx hard_corrections=%d rtt=%dms" % [pred_err / maxf(1.0, pred_n), pred_snaps, int(rtt_s * 1000)])
 
@@ -5646,6 +5718,7 @@ func update_client(dt: float) -> void:
 		var diff := wrapf(me.inp.aim - me.aim, -PI, PI)
 		var stepmax: float = aim_rate(mouse_aiming()) * dt
 		me.aim = wrapf(me.aim + clampf(diff, -stepmax, stepmax), -PI, PI)
+	local_fire(me, dt)
 	for kk in EDGE_KEYS:
 		if me.inp.get(kk, false):
 			in_latch[kk] = true
@@ -5750,6 +5823,7 @@ func update_client(dt: float) -> void:
 		f.t -= dt
 	feed = feed.filter(func(f): return f.t > 0)
 	shake = maxf(0.0, shake - dt * 30)
+	kick *= exp(-14.0 * dt)
 	big_t -= dt
 	hurt_t -= dt
 	hitmark_t -= dt
@@ -7400,6 +7474,7 @@ func _pm(nm: String) -> void:
 		return
 	var n := Time.get_ticks_usec()
 	prof_sec[nm] = prof_sec.get(nm, 0) + (n - _pm_t)
+	dsec_f[nm] = n - _pm_t
 	_pm_t = n
 
 # ================= SMOOTH (v1.6) =================
@@ -7560,15 +7635,15 @@ func draw_clouds() -> void:
 			continue
 		var grow: float = 0.45 + 0.55 * clampf((SMOKE_T - float(cl.t)) / 0.8, 0.0, 1.0)
 		var seed := float(int(cl.x * 7.0 + cl.y * 3.0) % 97)
-		for j in 24:
+		for j in 18:
 			var a := j * 2.39996 + seed
 			var rr: float = SMOKE_R * grow * (0.15 + 0.75 * fmod(j * 0.618, 1.0))
 			var px: float = cl.x + cos(a + time_s * 0.05) * rr + sin(time_s * 0.4 + j) * 8.0
 			var py: float = cl.y + sin(a + time_s * 0.05) * rr * 0.62 + cos(time_s * 0.35 + j * 1.7) * 6.0
-			var sz: float = (110.0 + 40.0 * fmod(j * 0.37, 1.0)) * grow
+			var sz: float = (150.0 + 50.0 * fmod(j * 0.37, 1.0)) * grow
 			var shade := 0.58 + 0.16 * fmod(j * 0.53, 1.0)
 			draw_set_transform_matrix(cur_wt * Transform2D(time_s * 0.08 * (1.0 if j % 2 == 0 else -1.0) + j, Vector2.ONE, 0.0, Vector2(px, py)))
-			draw_texture_rect(tex.smoke, Rect2(-sz / 2, -sz / 2, sz, sz), false, Color(shade, shade + 0.06, shade - 0.02, 0.95 * k))
+			draw_texture_rect(tex.smoke, Rect2(-sz / 2, -sz / 2, sz, sz), false, Color(shade, shade + 0.06, shade - 0.02, k))
 	draw_set_transform_matrix(cur_wt)
 var cur_wt := Transform2D.IDENTITY
 
@@ -7651,3 +7726,111 @@ var st_mine_boom := 0
 var st_smokes := 0
 var st_hand := 0.0
 var st_picks := 0
+var mt_throw := 0
+var snd_n := 0
+var expl_last := 0
+var psec_f := {}
+var dsec_f := {}
+var _pp_t := 0
+func _pp(nm: String) -> void:
+	if not prof_on:
+		return
+	var n := Time.get_ticks_usec()
+	psec_f[nm] = n - _pp_t
+	_pp_t = n
+
+# ================= OWN SHOTS ON A JOINING PHONE (v1.8) =================
+# The server still decides every hit. This only shows your own flash, sound and bullets the moment you fire.
+const LOCAL_GUNS := ["magnum", "uzi", "ak47", "shotgun", "smg", "sniper", "minigun"]
+var my_shots: Array = []
+var lf_cd := 0.0
+var lf_prev := false
+var lf_buf := 0.0
+var lf_n := 0
+var lf_last := -9.0
+var kick := Vector2.ZERO
+
+func local_shots_on() -> bool:
+	return net_role == "client" and predicting()
+
+func local_fire(me: Player, dt: float) -> void:
+	lf_cd -= dt
+	for i in range(my_shots.size() - 1, -1, -1):
+		var lb: Bullet = my_shots[i]
+		lb.life -= dt
+		if lb.life <= 0.0 or solid_pt(lb.x, lb.y) or lb.x < 0 or lb.x > WW or lb.y < 0 or lb.y > WH or local_hit(lb):
+			my_shots.remove_at(i)
+			bullets.erase(lb)
+	if not local_shots_on() or not me.alive:
+		lf_prev = false
+		return
+	var inp: Dictionary = me.inp
+	if inp.shoot and not lf_prev:
+		lf_buf = 0.22
+	lf_prev = inp.shoot
+	lf_buf -= dt
+	var w = me.slots[me.cur]
+	if w == null or not LOCAL_GUNS.has(w.type) or w.mag <= 0 or me.reload_t > 0 or me.switch_t > 0.06 or me.melee_anim > 0.05 or me.hand_on or me.stun_t > 0 or time_s - me.born_t < 0.5:
+		return
+	if not (inp.shoot or lf_buf > 0.0) or lf_cd > 0.0:
+		return
+	if w.type == "minigun" and me.spin < 1.0:
+		return
+	var d: Dictionary = WD[w.type]
+	lf_cd = d.rate * (0.55 if w.get("dual", false) else 1.0)
+	lf_buf = 0.0
+	var mz := muzzle_pos(me, w.type)
+	fire_fx(me, w.type, mz)
+	lf_total += 1
+	if w.type == "sniper":
+		return
+	if time_s - lf_last > 0.35:
+		lf_n = 0
+	lf_last = time_s
+	var off: float = SPREAD_PAT[lf_n % SPREAD_PAT.size()]
+	lf_n += 1
+	var spread_mul := 1.0 if me.on_ground else 1.35
+	if me.posture == "crouch":
+		spread_mul = 0.6
+	elif me.posture == "prone":
+		spread_mul = 0.35
+	for i in d.pellets:
+		var fan: float = (float(i) / (d.pellets - 1) - 0.5 + off * 0.15) if d.pellets > 1 else off
+		var a: float = me.aim + fan * d.spread * spread_mul
+		var b := Bullet.new()
+		var sp: float = d.speed * (1.0 - 0.06 * (i % 3) if d.pellets > 1 else 1.0)
+		b.x = mz.x; b.y = mz.y; b.vx = cos(a) * sp; b.vy = sin(a) * sp
+		b.life = d.life; b.max_life = d.life; b.gun = w.type
+		my_shots.append(b)
+		bullets.append(b)
+
+# a shown bullet stops where it meets another soldier
+func local_hit(b: Bullet) -> bool:
+	for i in players.size():
+		if i == my_idx:
+			continue
+		var o: Player = players[i]
+		if o.alive and b.x > o.x and b.x < o.x + o.w and b.y > o.y and b.y < o.y + o.h:
+			return true
+	return false
+
+# draw every picture and the common text sizes once at start (invisible), so the phone has them ready
+# and there is no hiccup the first time a gun fires or something explodes
+var warm_n := 0
+const WARM_TXT := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/:.,!?+-%()' "
+func warm_up() -> void:
+	warm_n += 1
+	var keys := tex.keys()
+	var per := ceili(keys.size() / 3.0)
+	if warm_n <= 3:
+		for i in range((warm_n - 1) * per, mini(keys.size(), warm_n * per)):
+			var tx = tex[keys[i]]
+			if tx is Texture2D:
+				draw_texture_rect(tx, Rect2(0, 0, 2, 2), false, Color(1, 1, 1, 0.004))
+	else:
+		var sizes: Array = [[8, 9, 10], [11, 12, 13], [14, 26, 50]][warm_n - 4]
+		for sz in sizes:
+			txt(WARM_TXT, Vector2(-4000, -4000), sz * u, Color(1, 1, 1, 0.01), 0, 3 * u)
+			txh(WARM_TXT, Vector2(-4000, -4000), sz * u, Color(1, 1, 1, 0.01), 0, 5 * u)
+			txt(WARM_TXT, Vector2(-4000, -4000), sz, Color(1, 1, 1, 0.01), 0, 3)
+var lf_total := 0
