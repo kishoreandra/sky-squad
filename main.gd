@@ -1,9 +1,9 @@
 extends Node2D
-# Sky Squad - Arc Light Studio. Playtest build 1.9
+# Sky Squad - Arc Light Studio. Playtest build 2.0
 # You vs bots, or LAN play with friends over a phone hotspot. Jetpack fuel, health, real-style guns, breaking map, gravity zones, slow map events.
 
 const META = preload("res://art/meta.gd")
-const VERSION := "1.9"
+const VERSION := "2.0"
 const NET_PORT := 24850
 const DISC_PORT := 24851
 const FUN_NAMES := ["Blaze", "Rocket", "Shadow", "Viper", "Tiger", "Storm", "Ninja", "Falcon", "Ace", "Bolt", "Rider", "Hawk", "Ghost", "Cobra", "Flash", "Comet"]
@@ -360,8 +360,9 @@ var water_row := 36
 var roam_pts: Array = []
 var surf_runs: Array = []
 var torches: Array = []
-const MAP_LIST := ["sky", "outpost", "catacombs"]
-const MAP_NAMES := {"sky": "Sky Islands", "outpost": "Outpost", "catacombs": "Catacombs", "random": "Random"}
+const MAP_LIST := ["sky", "outpost", "catacombs", "towers", "canyon", "ruins"]
+const MAP_NAMES := {"sky": "Sky Islands", "outpost": "Outpost", "catacombs": "Catacombs", "towers": "Twin Towers", "canyon": "Red Canyon", "ruins": "Jungle Ruins", "random": "Random"}
+const MAP_THEME := {"towers": "outpost", "canyon": "outpost", "ruins": "sky"}
 const OUTPOST_SPOTS := [
 	[50, 8, "gun", ["sniper", "rpg", "laser", "minigun"]], [59, 9, "health", []],
 	[35, 20, "gun", ["ak47", "shotgun", "smg", "flame"]], [84, 20, "gun", ["ak47", "shotgun", "smg", "flame"]],
@@ -392,7 +393,7 @@ var cfg := {
 	"name": "", "show_fps": false, "music": true, "shake": "low", "lan_bots": 2, "look": "", "server": "", "uid": "", "my_side": 0,
 }
 const MATCH_ROWS := [
-	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
+	["map", "Map", ["sky", "outpost", "catacombs", "towers", "canyon", "ruins", "random"], ["Sky Islands", "Outpost", "Catacombs", "Twin Towers", "Red Canyon", "Jungle Ruins", "Random"]],
 	["mode", "Game mode", ["ffa", "team"], ["Free for all", "Teams"]],
 	["my_side", "Your team (Teams)", [0, 1], ["Blue", "Red"]],
 	["bots", "Bots", [1, 2, 3, 4, 5], ["1", "2", "3", "4", "5"]],
@@ -406,7 +407,7 @@ const MATCH_ROWS := [
 	["zones", "Gravity zones", [false, true], ["Off", "On"]],
 ]
 const LAN_ROWS := [
-	["map", "Map", ["sky", "outpost", "catacombs", "random"], ["Sky Islands", "Outpost", "Catacombs", "Random"]],
+	["map", "Map", ["sky", "outpost", "catacombs", "towers", "canyon", "ruins", "random"], ["Sky Islands", "Outpost", "Catacombs", "Twin Towers", "Red Canyon", "Jungle Ruins", "Random"]],
 	["mode", "Game mode", ["ffa", "team"], ["Free for all", "Teams"]],
 	["lan_bots", "Bots", [0, 1, 2, 3, 4], ["None", "1", "2", "3", "4"]],
 	["skill", "Bot skill", ["easy", "normal", "hard"], ["Easy", "Normal", "Hard"]],
@@ -581,10 +582,19 @@ func make_style(style: String) -> Dictionary:
 	var st: Dictionary = STYLES[style].duplicate()
 	match cfg.skill:
 		"easy":
-			st.react += 0.3
-			st.err *= 1.7
-			st.turn *= 0.7
-			st.nade *= 0.6
+			st.react += 0.6
+			st.err *= 2.6
+			st.turn *= 0.5
+			st.nade *= 0.3
+			st["lead"] = 0.0
+			st["pause"] = 2.2
+			st["reach"] = 0.65
+			st["extras"] = 0.3
+		"normal":
+			st.react += 0.12
+			st.err *= 1.25
+			st["pause"] = 1.3
+			st["reach"] = 0.85
 		"hard":
 			st.react = maxf(0.15, st.react - 0.1)
 			st.err *= 0.7
@@ -660,6 +670,8 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_gone)
 	var args := OS.get_cmdline_user_args()
 	for a in args:
+		if a.begins_with("--skill="):
+			cfg.skill = a.substr(8)
 		if a.begins_with("--map="):
 			cfg.map = a.substr(6)
 		if a == "--lantest-host":
@@ -849,6 +861,20 @@ func _ready() -> void:
 					update_game(1.0 / 60.0)
 				print("MINETEST2 enemy next to it: exploded=", not grenades_list.has(mn), " foe alive=", foe1.alive, " hp=", foe1.hp)
 			get_tree().quit()
+		if a.begins_with("--dumpmap="):
+			map_id = a.substr(10)
+			gen_map()
+			for r in ROWS:
+				var line := ""
+				for c in COLS:
+					line += str(tiles[r * COLS + c])
+				print("ROW ", line)
+			for l in item_spots:
+				print("ITEM %d %d %s" % [l[0], surface_below(l[0], l[1]), l[2]])
+			for bs in bases_v:
+				print("BASE %d %d %d" % [bs[0], bs[1], bs[2]])
+			print("WATER %d" % water_row)
+			get_tree().quit()
 		if a == "--sittest":
 			cfg.bots = 1
 			reset_match()
@@ -1009,6 +1035,12 @@ func gen_map() -> void:
 			build_outpost()
 		"catacombs":
 			build_catacombs()
+		"towers":
+			build_towers()
+		"canyon":
+			build_canyon()
+		"ruins":
+			build_ruins()
 		_:
 			build_sky()
 	for bs in bases_v:
@@ -2193,7 +2225,10 @@ func update_player(p: Player, dt: float) -> void:
 		elif not p.jet_on and was_jet:
 			jet_player.stop()
 	if not p.jet_on and not p.in_water:
-		p.fuel = minf(S.fuel_max, p.fuel + (S.refill_ground if p.on_ground else S.refill_air) * dt)
+		if p.net_t <= 0:
+			p.fuel = minf(S.fuel_max, p.fuel + (S.refill_ground if p.on_ground else S.refill_air) * dt)
+		else:
+			p.fuel = 0.0
 	p.vy += S.gravity * gm * g_dir * dt * (0.3 if p.in_water else 1.0)
 	if p.in_water:
 		p.vx *= pow(0.3, dt)
@@ -2224,12 +2259,7 @@ func update_player(p: Player, dt: float) -> void:
 	p.switch_t -= dt
 	p.muzzle_t -= dt
 	p.recoil = maxf(0.0, p.recoil - dt * 40)
-	if p.bot or p.remote:
-		p.aim = inp.aim
-	else:
-		var diff := wrapf(inp.aim - p.aim, -PI, PI)
-		var stepmax: float = aim_rate(mouse_aiming()) * dt
-		p.aim = wrapf(p.aim + clampf(diff, -stepmax, stepmax), -PI, PI)
+	p.aim = wrapf(float(inp.aim), -PI, PI)
 	if p.posture == "prone":
 		var face0 := 1.0 if cos(p.aim) >= 0 else -1.0
 		var gs0 := gsign()
@@ -2305,10 +2335,7 @@ func update_player(p: Player, dt: float) -> void:
 	var do_frag: bool = thr and p.tk == 0
 	var do_mine: bool = (thr and p.tk == 1) or (inp.bomb and not pv.get("bomb", false))
 	var do_smoke: bool = (thr and p.tk == 2) or (inp.get("smoke", false) and not pv.get("smoke", false))
-	if p.hand_on:
-		do_frag = false
-		do_mine = false
-		do_smoke = false
+	var tm := 1.3 if p.hand_on else 1.0
 	var none_left: bool = (thr and p.grenades + p.bombs + p.smokes <= 0) or (inp.bomb and not pv.get("bomb", false) and p.bombs <= 0) or (inp.get("smoke", false) and not pv.get("smoke", false) and p.smokes <= 0)
 	if none_left:
 		me_fx(p, "snd", ["locked", -6.0])
@@ -2318,8 +2345,8 @@ func update_player(p: Player, dt: float) -> void:
 		var g := Grenade.new()
 		var sp := shoulder(p)
 		g.x = sp.x; g.y = sp.y
-		g.vx = cos(p.aim) * 560 + p.vx * 0.4
-		g.vy = sin(p.aim) * 560 + p.vy * 0.3
+		g.vx = cos(p.aim) * 560 * tm + p.vx * 0.4 * tm
+		g.vy = sin(p.aim) * 560 * tm + p.vy * 0.3
 		g.fuse = S.grenade_fuse
 		g.owner = p
 		grenades_list.append(g)
@@ -2330,8 +2357,8 @@ func update_player(p: Player, dt: float) -> void:
 		var gb := Grenade.new()
 		var spb := shoulder(p)
 		gb.x = spb.x; gb.y = spb.y
-		gb.vx = cos(p.aim) * 330 + p.vx * 0.3
-		gb.vy = sin(p.aim) * 330 + p.vy * 0.2
+		gb.vx = cos(p.aim) * 330 * tm + p.vx * 0.3 * tm
+		gb.vy = sin(p.aim) * 330 * tm + p.vy * 0.2
 		gb.fuse = 30.0
 		gb.kind = "bomb"
 		gb.owner = p
@@ -2344,8 +2371,8 @@ func update_player(p: Player, dt: float) -> void:
 		var spm := shoulder(p)
 		gsm.x = spm.x
 		gsm.y = spm.y
-		gsm.vx = cos(p.aim) * 480 + p.vx * 0.4
-		gsm.vy = sin(p.aim) * 480 + p.vy * 0.3
+		gsm.vx = cos(p.aim) * 480 * tm + p.vx * 0.4 * tm
+		gsm.vy = sin(p.aim) * 480 * tm + p.vy * 0.3
 		gsm.fuse = 1.3
 		gsm.kind = "smoke"
 		gsm.owner = p
@@ -2448,7 +2475,7 @@ func pickup_opts(p: Player, k: Pickup) -> Array:
 	for s2 in p.slots:
 		if s2 == null or not has_ammo(s2):
 			return []
-	return ["swap", "dual"] if is_small(k.gun) else ["swap"]
+	return ["swap"]
 
 func can_auto_take(p: Player, k: Pickup) -> bool:
 	return pickup_opts(p, k).is_empty()
@@ -2459,8 +2486,7 @@ func apply_pick(p: Player, k: Pickup, opt: String) -> void:
 	elif opt == "dual":
 		var cur = p.slots[p.cur]
 		if cur == null or cur.type != k.gun:
-			replace_current(p, k)
-			cur = p.slots[p.cur]
+			return
 		cur.dual = true
 		me_fx(p, "snd", ["equip2", -4.0])
 		cur.mag = mag_cap(cur)
@@ -2471,7 +2497,8 @@ func ease_k(rate: float, dt: float) -> float:
 	return 1.0 - exp(-rate * dt)
 
 func animate(p: Player, dt: float) -> void:
-	p.draw_aim = lerp_angle(p.draw_aim, p.aim, ease_k(22.0, dt))
+	# your own soldier is drawn exactly at the aim; others are smoothed a touch
+	p.draw_aim = p.aim if (is_me(p) or p.bot) else lerp_angle(p.draw_aim, p.aim, ease_k(30.0, dt))
 	var tb := 0.0
 	var tf := 0.0
 	var sb := 0.0
@@ -2724,7 +2751,7 @@ func bot_think(b: Player, dt: float) -> void:
 	# aiming: turn toward the target like a thumb would, with wobble
 	if tg != null:
 		var tc: Vector2 = b.target_pos
-		var lead := Vector2(tg.vx, tg.vy) * 0.08 if visible else Vector2.ZERO
+		var lead := Vector2(tg.vx, tg.vy) * 0.08 * float(st.get("lead", 1.0)) if visible else Vector2.ZERO
 		b.aim_want = atan2(tc.y + lead.y - c.y, tc.x + lead.x - c.x)
 	elif absf(dx) > 12:
 		b.aim_want = 0.0 if dx > 0 else PI
@@ -2740,7 +2767,7 @@ func bot_think(b: Player, dt: float) -> void:
 		b.see_t = b.see_t + dt if visible else 0.0
 		b.burst_t -= dt
 		b.pause_t -= dt
-		var reach := 1000.0 if (w != null and w.type == "sniper") else 760.0
+		var reach := (1000.0 if (w != null and w.type == "sniper") else 760.0) * float(st.get("reach", 1.0))
 		if w != null and w.type == "shock":
 			reach = 220.0
 		elif w != null and w.type == "net":
@@ -2751,13 +2778,13 @@ func bot_think(b: Player, dt: float) -> void:
 				if b.burst_t <= -0.5:
 					b.burst_t = randf_range(0.4, 1.0)
 			if b.burst_t <= 0 and b.burst_t > -0.5 and b.pause_t <= 0:
-				b.pause_t = randf_range(0.15, 0.45)
+				b.pause_t = randf_range(0.15, 0.45) * float(st.get("pause", 1.0))
 		inp.aim = new_aim + b.aim_err * 0.5
 		if d < 48 and visible:
 			inp.melee = true
-		if b.bombs > 0 and d < 260 and randf() < dt * 0.4:
+		if b.bombs > 0 and d < 260 and randf() < dt * 0.4 * float(st.get("extras", 1.0)):
 			inp.bomb = true
-		if b.smokes > 0 and d < 320 and randf() < dt * 0.35:
+		if b.smokes > 0 and d < 320 and randf() < dt * 0.35 * float(st.get("extras", 1.0)):
 			inp.smoke = true
 		if b.grenades > 0 and d < 420 and d > 120 and randf() < dt * st.nade * (1.2 if not visible else 0.35):
 			inp.grenade = true
@@ -2978,6 +3005,7 @@ func update_bullets(dt: float) -> void:
 					elif b.net:
 						if p.protect_t <= 0:
 							p.net_t = 3.5
+							p.fuel = 0.0
 							p.vx *= 0.3
 							p.vy *= 0.3
 						play("net", Vector2(b.x, b.y), -4.0)
@@ -3179,8 +3207,8 @@ func buttons() -> Array:
 		if w != null and WD[w.type].zooms.size() > 1:
 			out.append({"n": "ZOOM", "p": Vector2(bx + inward * r * 3.7, sh * 0.30), "r": r * 0.85})
 		# the three throwables next to the THROW button: tap one to pick it
-		for kk in 3:
-			out.append({"n": "TK%d" % kk, "p": Vector2(bx + inward * r * 1.95, sh * 0.30 + (kk - 1) * r * 1.3), "r": r * 0.6})
+		if kinds_held(me) > 1:
+			out.append({"n": "TKS", "p": Vector2(bx + inward * r * 1.7, sh * 0.30 - r * 0.55), "r": r * 0.55})
 	if cfg.fire_mode == "button":
 		var ap := def_aim()
 		out.append({"n": "FIRE", "p": Vector2(ap.x, ap.y - stick_rad() - r * 1.9), "r": r * 1.35})
@@ -3310,8 +3338,9 @@ func press(id: int, pos: Vector2) -> void:
 			return
 	for b in buttons():
 		if pos.distance_to(b.p) < b.r + (6 if b.n.begins_with("TK") else 12) * u:
-			if b.n.begins_with("TK"):
-				my_tk = int(b.n.substr(2))
+			if b.n == "TKS":
+				my_tk = next_kind(players[my_idx], my_tk)
+				play("ui_click", null, -8.0)
 				return
 			btn_held[b.n] = id
 			return
@@ -3563,7 +3592,7 @@ func human_input() -> void:
 			# wait until the gun has turned to where the stick points, so the shot goes where you meant
 			var cw = me.slots[me.cur]
 			var lag := absf(wrapf(last_touch_aim - me.aim, -PI, PI))
-			shoot = lag < (0.05 if cw != null and cw.type == "sniper" else 0.3)
+			shoot = lag < 0.3
 		inp.aim = last_touch_aim
 	elif mouse_aiming():
 		var wpos := cam + mouse_pos / zoom
@@ -3582,6 +3611,9 @@ func human_input() -> void:
 	for kk in 3:
 		if key([KEY_1, KEY_2, KEY_3][kk]):
 			my_tk = kk
+	if key(KEY_T) and not tk_key:
+		my_tk = next_kind(me, my_tk)
+	tk_key = key(KEY_T)
 	my_tk = pick_kind(me, my_tk)
 	inp.tk = my_tk
 	inp.hand = key(KEY_SHIFT) or btn_held.has("HAND")
@@ -3637,6 +3669,14 @@ func shot_pose() -> void:
 			var gb := Grenade.new()
 			gb.x = me.x + 60; gb.y = me.y + me.h - 8; gb.kind = "bomb"; gb.stuck = true; gb.fuse = 3.2; gb.owner = me
 			grenades_list.append(gb)
+		if a == "--kit":
+			me.bombs = 2
+			me.smokes = 1
+			me.slots[me.cur] = full_slot("sniper")
+			me.aim = -0.5
+			me.draw_aim = -0.5
+			last_touch_aim = -0.5
+			set_posture(me, "stand")
 		if a == "--swim":
 			set_posture(me, "stand")
 			me.protect_t = 0.0
@@ -4125,10 +4165,8 @@ func _draw_inner() -> void:
 			draw_set_transform_matrix(wt)
 			draw_texture_rect(tex.timebomb, Rect2(g.x - 8, g.y - 6, 16, 12), false)
 			var armed: bool = g.stuck and g.fuse > MINE_ARM
-			if sin(time_s * (9.0 if armed else 3.0)) > 0.2:
-				draw_circle(Vector2(g.x + 4, g.y - 5), 2.2, C_RED if armed else C_ARC)
-			if armed:
-				draw_arc(Vector2(g.x, g.y), MINE_R, 0, TAU, 28, Color(1, 0.25, 0.25, 0.18 + 0.08 * sin(time_s * 4.0)), 1.5, true)
+			if sin(time_s * (2.5 if armed else 3.0)) > 0.75:
+				draw_circle(Vector2(g.x + 4, g.y - 5), 1.4, Color(1, 0.3, 0.3, 0.7) if armed else C_ARC)
 			continue
 		draw_set_transform_matrix(wt * Transform2D(g.rot, Vector2.ONE, 0.0, Vector2(g.x, g.y)))
 		draw_texture_rect(tex.grenade, Rect2(-6, -7, 12, 14), false)
@@ -4158,7 +4196,7 @@ func _draw_inner() -> void:
 	draw_water()
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 	ga = 1.0
-	if map_id == "catacombs":
+	if map_theme() == "catacombs":
 		vignette(Color(0, 0, 0, 0.55), 0.28)
 	draw_hud()
 	if touch_mode or OS.has_feature("mobile") or (shot_at >= 0 and touch_mode):
@@ -4170,7 +4208,7 @@ func _draw_inner() -> void:
 	draw_top_layers()
 
 func draw_bg() -> void:
-	if map_id == "catacombs":
+	if map_theme() == "catacombs":
 		var t0 := Color("#120e14")
 		var t1 := Color("#251c1e")
 		draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(sw, 0), Vector2(sw, sh), Vector2(0, sh)]), PackedColorArray([t0, t0, t1, t1]))
@@ -4182,7 +4220,7 @@ func draw_bg() -> void:
 	var hor := Color("#dcEEF7")
 	var sun_col := Color(1, 0.98, 0.88)
 	var cloud_col := Color(1, 1, 1, 0.92)
-	if map_id == "outpost":
+	if map_theme() == "outpost":
 		top = Color("#35477e")
 		mid = Color("#d98a5f")
 		hor = Color("#f6cf8f")
@@ -4191,15 +4229,15 @@ func draw_bg() -> void:
 	var my := sh * 0.45
 	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(sw, 0), Vector2(sw, my), Vector2(0, my)]), PackedColorArray([top, top, mid, mid]))
 	draw_polygon(PackedVector2Array([Vector2(0, my), Vector2(sw, my), Vector2(sw, sh), Vector2(0, sh)]), PackedColorArray([mid, mid, hor, hor]))
-	var sun := Vector2(sw * 0.78 - cam.x * zoom * 0.02, sh * (0.32 if map_id == "outpost" else 0.2))
-	tex_c("glow", sun, Vector2(260, 260) * u * (1.5 if map_id == "outpost" else 1.0), Color(sun_col, 0.7))
-	draw_circle(sun, 26 * u * (1.4 if map_id == "outpost" else 1.0), sun_col)
-	for i in (3 if map_id == "outpost" else 5):
+	var sun := Vector2(sw * 0.78 - cam.x * zoom * 0.02, sh * (0.32 if map_theme() == "outpost" else 0.2))
+	tex_c("glow", sun, Vector2(260, 260) * u * (1.5 if map_theme() == "outpost" else 1.0), Color(sun_col, 0.7))
+	draw_circle(sun, 26 * u * (1.4 if map_theme() == "outpost" else 1.0), sun_col)
+	for i in (3 if map_theme() == "outpost" else 5):
 		var cw := (220.0 + i * 30) * u * 0.9
 		var x := fposmod(i * 470.0 + time_s * (6 + i * 2) - cam.x * zoom * 0.08, sw + cw * 2) - cw
 		var y := sh * (0.08 + 0.07 * (i % 3)) - cam.y * zoom * 0.03
 		draw_texture_rect(tex["cloud%d" % (i % 3)], Rect2(x, y, cw, cw * 0.45), false, cloud_col)
-	if map_id == "outpost":
+	if map_theme() == "outpost":
 		layer("bg_out_far", 0.10, 0.66, 0.31, Color("#b07054"))
 		layer("bg_out_mid", 0.25, 0.80, 0.425, Color("#be925e"))
 		layer("bg_out_near", 0.42, 0.93, 0.475, Color("#a0744a"))
@@ -4229,11 +4267,11 @@ func draw_tiles(vw: float, vh: float) -> void:
 	var rock_tx: Texture2D = tex.rock
 	var dirt_pre := "dirt"
 	var cap_tx: Texture2D = tex.grass
-	if map_id == "outpost":
+	if map_theme() == "outpost":
 		rock_tx = tex.concrete
 		dirt_pre = "sand"
 		cap_tx = tex.sandcap
-	elif map_id == "catacombs":
+	elif map_theme() == "catacombs":
 		rock_tx = tex.brick
 		dirt_pre = "cave"
 		cap_tx = tex.moss
@@ -4809,15 +4847,13 @@ func draw_touch() -> void:
 				var kk := pick_kind(me, my_tk)
 				tex_c(THROW_TEX[kk][0], b.p + Vector2(0, -3 * u), THROW_TEX[kk][1] * u)
 				txt("%d" % kind_count(me, kk), b.p + Vector2(b.r * 0.55, b.r * 0.7), 11 * u, C_INK, 1, 3 * u)
-			"TK0", "TK1", "TK2":
-				var kk2 := int(b.n.substr(2))
-				var on: bool = pick_kind(me, my_tk) == kk2
-				var cnt := kind_count(me, kk2)
-				if on:
-					draw_arc(b.p, b.r + 2 * u, 0, TAU, 32, C_ARC, 2.5 * u, true)
-				var tcol := Color(1, 1, 1, 1.0 if cnt > 0 else 0.3)
-				tex_c(THROW_TEX[kk2][0], b.p + Vector2(0, -1 * u), THROW_TEX[kk2][1] * u * 0.7, tcol)
-				txt("%d" % cnt, b.p + Vector2(b.r * 0.7, b.r * 0.75), 9 * u, C_INK if cnt > 0 else C_MUTED, 1, 2 * u)
+			"TKS":
+				# shows the next kind you would switch to, with a little turn arrow
+				var nk := next_kind(me, my_tk)
+				tex_c(THROW_TEX[nk][0], b.p + Vector2(-1 * u, 0), THROW_TEX[nk][1] * u * 0.6)
+				draw_arc(b.p, b.r - 3 * u, -2.4, 1.6, 18, C_ARC, 2 * u, true)
+				var tip: Vector2 = b.p + Vector2(cos(1.6), sin(1.6)) * (b.r - 3 * u)
+				draw_colored_polygon(PackedVector2Array([tip + Vector2(-4, -1) * u, tip + Vector2(3, -3) * u, tip + Vector2(1, 4) * u]), C_ARC)
 			"HAND":
 				var sw2 := sin(time_s * 10.0) * 0.5 if btn_held.has("HAND") else 0.0
 				for hs in [-1.0, 1.0]:
@@ -6379,12 +6415,12 @@ func set_loop(pn: String, ln: String, db: float, delta: float) -> void:
 
 func update_loops(delta: float) -> void:
 	var playing := state == "play" or state == "paused" or state == "over"
-	var amb: String = {"sky": "amb_sky", "outpost": "amb_outpost", "catacombs": "amb_catacombs"}.get(map_id, "amb_sky")
+	var amb: String = {"sky": "amb_sky", "outpost": "amb_outpost", "catacombs": "amb_catacombs"}.get(map_theme(), "amb_sky")
 	set_loop("amb", amb, (-20.0 if playing else -28.0), delta)
 	var me = players[my_idx] if (playing and my_idx < players.size()) else null
 	set_loop("water", "water_loop", -10.0 if (me != null and me.alive and me.in_water) else -80.0, delta)
 	var td := 1e9
-	if me != null and map_id == "catacombs":
+	if me != null and map_theme() == "catacombs":
 		var mc := center(me)
 		for tp in torches:
 			td = minf(td, mc.distance_to(Vector2(tp.x * T + 16, tp.y * T + 10)))
@@ -7191,7 +7227,7 @@ func predict_step(p: Player, mx: float, fly_in: bool, dt: float, hand := false) 
 			p.pfuel = maxf(0.0, p.pfuel - S.fuel_drain * fm * dt)
 			p.jet_on = true
 	if not p.jet_on and not p.in_water:
-		p.pfuel = minf(S.fuel_max, p.pfuel + (S.refill_ground if p.on_ground else S.refill_air) * dt)
+		p.pfuel = minf(S.fuel_max, p.pfuel + (S.refill_ground if p.on_ground else S.refill_air) * dt) if p.net_t <= 0 else 0.0
 	p.vy += S.gravity * gm * g_dir * dt * (0.3 if p.in_water else 1.0)
 	if p.in_water:
 		p.vx *= pow(0.3, dt)
@@ -7921,3 +7957,170 @@ func warm_up() -> void:
 			txt(WARM_TXT, Vector2(-4000, -4000), sz, Color(1, 1, 1, 0.01), 0, 3)
 var lf_total := 0
 var sit_hold := 0
+
+# ================= v2.0 helpers =================
+var tk_key := false
+
+func kinds_held(p: Player) -> int:
+	var n := 0
+	for k in 3:
+		if kind_count(p, k) > 0:
+			n += 1
+	return n
+
+func next_kind(p: Player, cur: int) -> int:
+	cur = pick_kind(p, cur)
+	for i in range(1, 4):
+		var k := (cur + i) % 3
+		if kind_count(p, k) > 0:
+			return k
+	return cur
+
+func map_theme() -> String:
+	return MAP_THEME.get(map_id, map_id)
+
+# --- Twin Towers: two tall towers with floors, a sky bridge, a street and a tunnel under it ---
+func build_towers() -> void:
+	bases_v = [[2, 33, 8], [110, 33, 8]]
+	water_row = ROWS
+	zones = [{"type": "low", "rect": Rect2(48*T, 2*T, 24*T, 14*T), "g": 0.35, "f": 0.5}]
+	for c in range(1, COLS - 1):
+		fill(c, 39, c, ROWS - 3, DIRT)
+	fill(1, ROWS - 4, COLS - 2, ROWS - 3, ROCK)
+	# tunnel under the street
+	fill(30, 41, 89, 42, EMPTY)
+	fill(30, 39, 31, 40, EMPTY)
+	fill(88, 39, 89, 40, EMPTY)
+	for tx in [28, 80]:
+		# tower walls with doors and window gaps
+		fill(tx, 10, tx, 38, ROCK)
+		fill(tx + 11, 10, tx + 11, 38, ROCK)
+		for fy in [32, 26, 20, 14, 10]:
+			fill(tx, fy, tx + 11, fy, ROCK)
+		for fy in [32, 26, 20, 14]:
+			fill(tx + 4, fy, tx + 7, fy, EMPTY)   # stair gap in each floor
+		fill(tx, 34, tx, 37, EMPTY)
+		fill(tx + 11, 34, tx + 11, 37, EMPTY)
+		fill(tx, 22, tx, 24, EMPTY)
+		fill(tx + 11, 16, tx + 11, 18, EMPTY)
+		fill(tx, 16, tx, 18, EMPTY)
+		fill(tx + 11, 22, tx + 11, 24, EMPTY)
+		set_tile(tx + 2, 31, CRATE)
+		set_tile(tx + 9, 25, CRATE)
+	# sky bridge between the towers and small roofs at the sides
+	fill(40, 20, 79, 20, WOOD)
+	fill(57, 20, 62, 20, EMPTY)
+	fill(52, 9, 67, 9, WOOD)
+	fill(12, 26, 20, 26, ROCK)
+	fill(99, 26, 107, 26, ROCK)
+	fill(13, 15, 19, 15, WOOD)
+	fill(100, 15, 106, 15, WOOD)
+	# street cover
+	for cx2 in [46, 52, 67, 73]:
+		set_tile(cx2, 38, CRATE)
+	fill(58, 37, 61, 38, ROCK)
+	item_spots = [
+		[60, 8, "gun", ["sniper", "rpg", "laser", "minigun"]], [59, 36, "health", []],
+		[33, 31, "gun", ["ak47", "shotgun", "smg"]], [85, 31, "gun", ["ak47", "shotgun", "smg"]],
+		[33, 13, "gun", ["sniper", "laser"]], [85, 13, "gun", ["sniper", "laser"]],
+		[48, 19, "gun", ["uzi", "magnum", "shock", "net"]], [71, 19, "gun", ["flame", "net", "rpg"]],
+		[16, 25, "health", []], [103, 25, "health", []],
+		[45, 40, "grenade", []], [74, 40, "bomb", []], [60, 40, "smoke", []],
+		[16, 14, "gun", ["uzi", "shotgun"]], [103, 14, "gun", ["smg", "shotgun"]],
+	]
+
+# --- Red Canyon: two mesas, a deep canyon with a rope bridge, caves in the walls ---
+func build_canyon() -> void:
+	bases_v = [[3, 18, 9], [108, 18, 9]]
+	water_row = 40
+	zones = [{"type": "heavy", "rect": Rect2(46*T, 30*T, 28*T, 10*T), "g": 1.8, "f": 2.0}]
+	for c in range(1, COLS - 1):
+		var top: int
+		if c < 40:
+			top = 19 + roundi(1.2 * sin(c * 0.2))
+		elif c > 79:
+			top = 19 + roundi(1.2 * sin(c * 0.17 + 1.0))
+		else:
+			var k := absf(c - 59.5) / 20.0
+			top = 41 - roundi((1.0 - k * k) * 0.0 + k * k * 22.0)
+		fill(c, top, c, ROWS - 3, DIRT)
+	fill(1, ROWS - 4, COLS - 2, ROWS - 3, ROCK)
+	# caves in the canyon walls and inside the mesas
+	carve_ellipse(30, 27, 7, 3)
+	carve_ellipse(89, 27, 7, 3)
+	fill(36, 26, 44, 28, EMPTY)
+	fill(75, 26, 83, 28, EMPTY)
+	carve_ellipse(14, 30, 8, 3)
+	carve_ellipse(105, 30, 8, 3)
+	fill(13, 20, 15, 28, EMPTY)
+	fill(104, 20, 106, 28, EMPTY)
+	# rope bridge across the canyon and floating rock steps
+	fill(40, 18, 79, 18, WOOD)
+	fill(58, 18, 61, 18, EMPTY)
+	fill(50, 30, 54, 30, ROCK)
+	fill(65, 30, 69, 30, ROCK)
+	fill(57, 24, 62, 24, ROCK)
+	# rock pillars on the mesas
+	for px in [24, 95]:
+		fill(px, 14, px + 1, 18, ROCK)
+	fill(20, 10, 28, 10, WOOD)
+	fill(91, 10, 99, 10, WOOD)
+	for cx2 in [10, 35, 84, 109]:
+		set_tile(cx2, surface_below(cx2, 10) - 1, CRATE)
+	item_spots = [
+		[59, 22, "gun", ["sniper", "rpg", "laser", "minigun"]], [59, 38, "health", []],
+		[24, 9, "gun", ["sniper", "laser"]], [95, 9, "gun", ["sniper", "laser"]],
+		[30, 27, "gun", ["ak47", "shotgun", "smg", "flame"]], [89, 27, "gun", ["ak47", "shotgun", "smg", "flame"]],
+		[52, 29, "grenade", []], [67, 29, "bomb", []],
+		[14, 29, "health", []], [105, 29, "health", []],
+		[45, 17, "gun", ["uzi", "magnum", "shock", "net"]], [74, 17, "gun", ["uzi", "magnum", "shock", "net"]],
+		[59, 17, "smoke", []],
+	]
+
+# --- Jungle Ruins: a stepped temple in the middle, broken stone arches, a river below ---
+func build_ruins() -> void:
+	bases_v = [[2, 30, 9], [109, 30, 9]]
+	water_row = 36
+	zones = [{"type": "low", "rect": Rect2(46*T, 2*T, 28*T, 12*T), "g": 0.35, "f": 0.5}]
+	for c in range(1, COLS - 1):
+		var g := 35 + roundi(1.5 * sin(c * 0.09) + 0.8 * sin(c * 0.23 + 2.0))
+		if c > 33 and c < 44 or c > 75 and c < 86:
+			g = 40   # river beds
+		fill(c, g, c, ROWS - 3, DIRT)
+	fill(1, ROWS - 4, COLS - 2, ROWS - 3, ROCK)
+	for bs in [[2, 30, 9], [109, 30, 9]]:
+		fill(bs[0], bs[1] + 1, bs[0] + bs[2] - 1, 34, ROCK)
+	# stepped temple
+	fill(40, 35, 79, 37, DIRT)
+	var steps := [[44, 75, 33], [47, 72, 29], [50, 69, 25], [53, 66, 21], [56, 63, 17]]
+	for st in steps:
+		fill(st[0], st[2], st[1], 34, ROCK)
+	# a hall inside the temple with doors on both sides, and a shrine on top
+	fill(49, 30, 70, 33, EMPTY)
+	fill(44, 31, 49, 33, EMPTY)
+	fill(70, 31, 75, 33, EMPTY)
+	fill(55, 26, 64, 28, EMPTY)
+	fill(59, 29, 60, 29, EMPTY)
+	fill(57, 13, 62, 13, ROCK)
+	# broken arches and tree platforms
+	for ax in [18, 96]:
+		fill(ax, 22, ax + 7, 22, ROCK)
+		fill(ax, 23, ax, 30, ROCK)
+		fill(ax + 7, 23, ax + 7, 27, ROCK)
+	fill(30, 16, 37, 16, WOOD)
+	fill(82, 16, 89, 16, WOOD)
+	fill(8, 15, 14, 15, WOOD)
+	fill(105, 15, 111, 15, WOOD)
+	# log bridges over the rivers
+	fill(34, 35, 43, 35, WOOD)
+	fill(76, 35, 85, 35, WOOD)
+	for cx2 in [26, 49, 70, 93]:
+		set_tile(cx2, surface_below(cx2, 25) - 1, CRATE)
+	item_spots = [
+		[59, 12, "gun", ["sniper", "rpg", "laser", "minigun"]], [48, 28, "health", []],
+		[48, 29, "gun", ["ak47", "shotgun", "smg"]], [71, 29, "gun", ["ak47", "shotgun", "smg"]],
+		[21, 21, "gun", ["sniper", "laser"]], [99, 21, "gun", ["sniper", "laser"]],
+		[33, 15, "gun", ["uzi", "magnum", "shock", "net"]], [86, 15, "gun", ["flame", "net", "rpg"]],
+		[38, 39, "health", []], [80, 39, "health", []],
+		[11, 14, "grenade", []], [108, 14, "smoke", []], [59, 33, "bomb", []],
+	]
